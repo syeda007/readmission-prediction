@@ -1,0 +1,236 @@
+{
+  "age": [
+    {
+      "subgroup": "[0-10)",
+      "sample_size": 38,
+      "readmitted_count": 2,
+      "prevalence_pct": 5.26,
+      "recall_sensitivity": 0.0,
+      "precision": 0.0,
+      "false_negative_rate": 1.0,
+      "false_positive_rate": 0.0,
+      "brier_score": 0.0505,
+      "small_sample_warning": true
+    },
+    {
+      "subgroup": "[10-20)",
+      "sample_size": 137,
+      "readmitted_count": 5,
+      "prevalence_pct": 3.65,
+      "recall_sensitivity": 0.2,
+      "precision": 0.0909,
+      "false_negative_rate": 0.8,
+      "false_positive_rate": 0.0758,
+      "brier_score": 0.0343,
+      "small_sample_warning": true
+    },
+    {
+      "subgroup": "[20-30)",
+      "sample_size": 284,
+      "readmitted_count": 23,
+      "prevalence_pct": 8.1,
+      "recall_sensitivity": 0.2609,
+      "precision": 0.1304,
+      "false_negative_rate": 0.7391,
+      "false_positive_rate": 0.1533,
+      "brier_score": 0.0805,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "[30-40)",
+      "sample_size": 803,
+      "readmitted_count": 99,
+      "prevalence_pct": 12.33,
+      "recall_sensitivity": 0.3737,
+      "precision": 0.2483,
+      "false_negative_rate": 0.6263,
+      "false_positive_rate": 0.1591,
+      "brier_score": 0.1048,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "[40-50)",
+      "sample_size": 1880,
+      "readmitted_count": 193,
+      "prevalence_pct": 10.27,
+      "recall_sensitivity": 0.3886,
+      "precision": 0.2698,
+      "false_negative_rate": 0.6114,
+      "false_positive_rate": 0.1203,
+      "brier_score": 0.0865,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "[50-60)",
+      "sample_size": 3471,
+      "readmitted_count": 356,
+      "prevalence_pct": 10.26,
+      "recall_sensitivity": 0.2949,
+      "precision": 0.2793,
+      "false_negative_rate": 0.7051,
+      "false_positive_rate": 0.087,
+      "brier_score": 0.0873,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "[60-70)",
+      "sample_size": 4431,
+      "readmitted_count": 462,
+      "prevalence_pct": 10.43,
+      "recall_sensitivity": 0.3528,
+      "precision": 0.2267,
+      "false_negative_rate": 0.6472,
+      "false_positive_rate": 0.1401,
+      "brier_score": 0.0902,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "[70-80)",
+      "sample_size": 4987,
+      "readmitted_count": 555,
+      "prevalence_pct": 11.13,
+      "recall_sensitivity": 0.3315,
+      "precision": 0.23,
+      "false_negative_rate": 0.6685,
+      "false_positive_rate": 0.139,
+      "brier_score": 0.0942,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "[80-90)",
+      "sample_size": 3170,
+      "readmitted_count": 400,
+      "prevalence_pct": 12.62,
+      "recall_sensitivity": 0.3075,
+      "precision": 0.2321,
+      "false_negative_rate": 0.6925,
+      "false_positive_rate": 0.1469,
+      "brier_score": 0.1053,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "[90-100)",
+      "sample_size": 487,
+      "readmitted_count": 44,
+      "prevalence_pct": 9.03,
+      "recall_sensitivity": 0.2273,
+      "precision": 0.1613,
+      "false_negative_rate": 0.7727,
+      "false_positive_rate": 0.1174,
+      "brier_score": 0.0847,
+      "small_sample_warning": false
+    }
+  ],
+  "gender": [
+    {
+      "subgroup": "Female",
+      "sample_size": 10630,
+      "readmitted_count": 1151,
+      "prevalence_pct": 10.83,
+      "recall_sensitivity": 0.3102,
+      "precision": 0.2233,
+      "false_negative_rate": 0.6898,
+      "false_positive_rate": 0.131,
+      "brier_score": 0.0929,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "Male",
+      "sample_size": 9056,
+      "readmitted_count": 988,
+      "prevalence_pct": 10.91,
+      "recall_sensitivity": 0.3512,
+      "precision": 0.2531,
+      "false_negative_rate": 0.6488,
+      "false_positive_rate": 0.1269,
+      "brier_score": 0.0925,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "Unknown/Invalid",
+      "sample_size": 2,
+      "readmitted_count": 0,
+      "prevalence_pct": 0.0,
+      "recall_sensitivity": 0.0,
+      "precision": 0.0,
+      "false_negative_rate": 0.0,
+      "false_positive_rate": 0.5,
+      "brier_score": 0.0731,
+      "small_sample_warning": true
+    }
+  ],
+  "race": [
+    {
+      "subgroup": "AfricanAmerican",
+      "sample_size": 3770,
+      "readmitted_count": 423,
+      "prevalence_pct": 11.22,
+      "recall_sensitivity": 0.3522,
+      "precision": 0.2373,
+      "false_negative_rate": 0.6478,
+      "false_positive_rate": 0.1431,
+      "brier_score": 0.0946,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "Asian",
+      "sample_size": 119,
+      "readmitted_count": 19,
+      "prevalence_pct": 15.97,
+      "recall_sensitivity": 0.3684,
+      "precision": 0.35,
+      "false_negative_rate": 0.6316,
+      "false_positive_rate": 0.13,
+      "brier_score": 0.1306,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "Caucasian",
+      "sample_size": 14724,
+      "readmitted_count": 1616,
+      "prevalence_pct": 10.98,
+      "recall_sensitivity": 0.3261,
+      "precision": 0.2374,
+      "false_negative_rate": 0.6739,
+      "false_positive_rate": 0.1292,
+      "brier_score": 0.0937,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "Hispanic",
+      "sample_size": 388,
+      "readmitted_count": 31,
+      "prevalence_pct": 7.99,
+      "recall_sensitivity": 0.3226,
+      "precision": 0.2128,
+      "false_negative_rate": 0.6774,
+      "false_positive_rate": 0.1036,
+      "brier_score": 0.0693,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "Missing/Unknown",
+      "sample_size": 403,
+      "readmitted_count": 21,
+      "prevalence_pct": 5.21,
+      "recall_sensitivity": 0.1905,
+      "precision": 0.129,
+      "false_negative_rate": 0.8095,
+      "false_positive_rate": 0.0707,
+      "brier_score": 0.0525,
+      "small_sample_warning": false
+    },
+    {
+      "subgroup": "Other",
+      "sample_size": 284,
+      "readmitted_count": 29,
+      "prevalence_pct": 10.21,
+      "recall_sensitivity": 0.2414,
+      "precision": 0.28,
+      "false_negative_rate": 0.7586,
+      "false_positive_rate": 0.0706,
+      "brier_score": 0.0869,
+      "small_sample_warning": false
+    }
+  ]
+}

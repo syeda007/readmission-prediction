@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReadmitAI — Clinical Readmission Intelligence & Decision Support</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Clinical Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+        </div>
+        <div>
+          <h1>ReadmitAI <span class="badge-research">Clinical Decision Support</span></h1>
+          <p class="subtitle">Explainable 30-Day Hospital Readmission Risk Prediction & Discharge Intelligence</p>
+        </div>
+      </div>
+      <div class="header-meta">
+        <div class="meta-item">
+          <span class="meta-label">Model Pipeline</span>
+          <span class="meta-val">XGBoost Calibrated v1.0.0</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Decision Policy</span>
+          <span class="meta-val highlight">Threshold &ge; 0.15</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">System Status</span>
+          <span class="status-indicator online">Connected</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="main-container">
+    <!-- Preset Profiles Toolbar -->
+    <section class="preset-section">
+      <div class="preset-label">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Load Test Patient Encounter:
+      </div>
+      <div class="preset-buttons">
+        <button type="button" class="btn-preset" onclick="loadProfile('high_risk')">
+          <span class="dot red"></span> High Risk: Multimorbid Diabetic (Elderly)
+        </button>
+        <button type="button" class="btn-preset" onclick="loadProfile('moderate_risk')">
+          <span class="dot yellow"></span> Moderate Risk: Cardiac Comorbidity
+        </button>
+        <button type="button" class="btn-preset" onclick="loadProfile('low_risk')">
+          <span class="dot green"></span> Low Risk: Routine Uncomplicated
+        </button>
+        <button type="button" class="btn-preset warning-btn" onclick="loadProfile('ineligible')">
+          <span class="dot gray"></span> Ineligible: Hospice/Expired Discharge
+        </button>
+      </div>
+    </section>
+
+    <div class="dashboard-grid">
+      <!-- Patient Encounter Form -->
+      <section class="card form-card">
+        <div class="card-header">
+          <h2>Patient Discharge Assessment Data</h2>
+          <span class="section-tag">EHR Entry at Discharge</span>
+        </div>
+
+        <form id="patientForm" onsubmit="handleAssessment(event)">
+          <!-- Section A: Demographics -->
+          <div class="form-group-title">1. Patient Demographics</div>
+          <div class="form-row">
+            <div class="field">
+              <label for="age">Age Bracket</label>
+              <select id="age" name="age" required>
+                <option value="[0-10)">[0 - 10)</option>
+                <option value="[10-20)">[10 - 20)</option>
+                <option value="[20-30)">[20 - 30)</option>
+                <option value="[30-40)">[30 - 40)</option>
+                <option value="[40-50)">[40 - 50)</option>
+                <option value="[50-60)">[50 - 60)</option>
+                <option value="[60-70)">[60 - 70)</option>
+                <option value="[70-80)" selected>[70 - 80)</option>
+                <option value="[80-90)">[80 - 90)</option>
+                <option value="[90-100)">[90 - 100)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="gender">Gender</label>
+              <select id="gender" name="gender" required>
+                <option value="Female" selected>Female</option>
+                <option value="Male">Male</option>
+                <option value="Unknown/Invalid">Unknown</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="race">Race / Ethnicity</label>
+              <select id="race" name="race">
+                <option value="Caucasian" selected>Caucasian</option>
+                <option value="AfricanAmerican">African American</option>
+                <option value="Hispanic">Hispanic</option>
+                <option value="Asian">Asian</option>
+                <option value="Other">Other</option>
+                <option value="Missing_Race">Not Recorded</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Section B: Admission & Discharge -->
+          <div class="form-group-title">2. Admission & Disposition</div>
+          <div class="form-row">
+            <div class="field">
+              <label for="admission_type_id">Admission Type</label>
+              <select id="admission_type_id" name="admission_type_id">
+                <option value="1" selected>1 - Emergency</option>
+                <option value="2">2 - Urgent</option>
+                <option value="3">3 - Elective</option>
+                <option value="7">7 - Trauma Center</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="admission_source_id">Admission Source</label>
+              <select id="admission_source_id" name="admission_source_id">
+                <option value="7" selected>7 - Emergency Room</option>
+                <option value="1">1 - Physician Referral</option>
+                <option value="2">2 - Clinic Referral</option>
+                <option value="4">4 - Hospital Transfer</option>
+                <option value="5">5 - SNF Transfer</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="discharge_disposition_id">Discharge Disposition</label>
+              <select id="discharge_disposition_id" name="discharge_disposition_id">
+                <option value="1" selected>1 - Discharged to Home</option>
+                <option value="3">3 - Transferred to SNF</option>
+                <option value="6">6 - Home Health Service</option>
+                <option value="2">2 - Another Short-Term Hospital</option>
+                <option value="5">5 - Inpatient Care Facility</option>
+                <option value="7">7 - Left AMA</option>
+                <option value="11">11 - Expired (Ineligible)</option>
+                <option value="13">13 - Hospice Home (Ineligible)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Section C: Hospital History & Stay -->
+          <div class="form-group-title">3. Stay Metrics & Utilization History</div>
+          <div class="form-row four-col">
+            <div class="field">
+              <label for="time_in_hospital">Stay Length (Days)</label>
+              <input type="number" id="time_in_hospital" name="time_in_hospital" min="1" max="14" value="4" required>
+            </div>
+            <div class="field">
+              <label for="number_inpatient">Prior Inpatient Stays</label>
+              <input type="number" id="number_inpatient" name="number_inpatient" min="0" max="25" value="2" required>
+            </div>
+            <div class="field">
+              <label for="number_emergency">Prior ED Visits</label>
+              <input type="number" id="number_emergency" name="number_emergency" min="0" max="25" value="1" required>
+            </div>
+            <div class="field">
+              <label for="number_outpatient">Prior Outpatient Visits</label>
+              <input type="number" id="number_outpatient" name="number_outpatient" min="0" max="25" value="0" required>
+            </div>
+          </div>
+
+          <div class="form-row four-col">
+            <div class="field">
+              <label for="num_medications">Total Medications</label>
+              <input type="number" id="num_medications" name="num_medications" min="1" max="100" value="18" required>
+            </div>
+            <div class="field">
+              <label for="num_lab_procedures">Lab Procedures</label>
+              <input type="number" id="num_lab_procedures" name="num_lab_procedures" min="1" max="150" value="45" required>
+            </div>
+            <div class="field">
+              <label for="num_procedures">Non-Lab Procedures</label>
+              <input type="number" id="num_procedures" name="num_procedures" min="0" max="10" value="1" required>
+            </div>
+            <div class="field">
+              <label for="number_diagnoses">Total Diagnoses</label>
+              <input type="number" id="number_diagnoses" name="number_diagnoses" min="1" max="16" value="9" required>
+            </div>
+          </div>
+
+          <!-- Section D: Diagnostics & Glycemic Lab Monitoring -->
+          <div class="form-group-title">4. Diagnoses (ICD-9) & Glycemic Testing</div>
+          <div class="form-row">
+            <div class="field">
+              <label for="diag_1">Primary Diagnosis (diag_1)</label>
+              <input type="text" id="diag_1" name="diag_1" value="428" placeholder="e.g. 428, 250.02, 414" required>
+              <small class="helper-text">428=Heart Failure, 250=Diabetes, 486=Pneumonia</small>
+            </div>
+            <div class="field">
+              <label for="diag_2">Secondary Diagnosis (diag_2)</label>
+              <input type="text" id="diag_2" name="diag_2" value="250.02" placeholder="e.g. 250.02">
+            </div>
+            <div class="field">
+              <label for="diag_3">Tertiary Diagnosis (diag_3)</label>
+              <input type="text" id="diag_3" name="diag_3" value="401" placeholder="e.g. 401">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="field">
+              <label for="A1Cresult">HbA1c Lab Result</label>
+              <select id="A1Cresult" name="A1Cresult">
+                <option value="None" selected>None (Test Not Performed)</option>
+                <option value="Norm">Norm (Normal)</option>
+                <option value=">7">> 7%</option>
+                <option value=">8">> 8% (Poor Control)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="max_glu_serum">Max Glucose Serum</label>
+              <select id="max_glu_serum" name="max_glu_serum">
+                <option value="None" selected>None (Test Not Performed)</option>
+                <option value="Norm">Norm (Normal)</option>
+                <option value=">200">> 200 mg/dL</option>
+                <option value=">300">> 300 mg/dL</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="insulin">Insulin Regimen</label>
+              <select id="insulin" name="insulin">
+                <option value="No">No</option>
+                <option value="Steady" selected>Steady</option>
+                <option value="Up">Up (Dose Increased)</option>
+                <option value="Down">Down (Dose Decreased)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Section E: Medications & Supplemental EHR Notes -->
+          <div class="form-group-title">5. Medication Changes & Supplemental EHR Observations</div>
+          <div class="form-row">
+            <div class="field">
+              <label for="metformin">Metformin</label>
+              <select id="metformin" name="metformin">
+                <option value="No" selected>No</option>
+                <option value="Steady">Steady</option>
+                <option value="Up">Up</option>
+                <option value="Down">Down</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="change">Diabetic Med Change</label>
+              <select id="change" name="change">
+                <option value="No">No</option>
+                <option value="Ch" selected>Ch (Dosage/Drug Changed)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="diabetesMed">Prescribed Diabetes Med</label>
+              <select id="diabetesMed" name="diabetesMed">
+                <option value="Yes" selected>Yes</option>
+                <option value="No">No</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="field full-width">
+              <label for="patient_notes">
+                Supplemental Clinical Observation Notes
+                <span class="tag-note">EHR Qualitative Only — Excluded from ML Predictors</span>
+              </label>
+              <textarea id="patient_notes" name="patient_notes" rows="2" placeholder="e.g. Patient ambulates with walker, expresses difficulty affording glucometer strips, scheduled for visiting nurse..."></textarea>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="btnAssess" class="btn-primary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              Assess Readmission Risk & Explain
+            </button>
+            <button type="button" class="btn-secondary" onclick="resetForm()">Reset</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Risk Assessment Intelligence Output -->
+      <section class="card results-card" id="resultsSection">
+        <div class="card-header">
+          <h2>Discharge Risk Intelligence</h2>
+          <span id="assessmentTimestamp" class="section-tag">Awaiting Assessment</span>
+        </div>
+
+        <div id="resultsContent" class="results-body">
+          <!-- Placeholder State -->
+          <div id="emptyState" class="empty-state">
+            <div class="empty-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.5L19 7.5V19a2 2 0 0 1-2 2Z"/>
+              </svg>
+            </div>
+            <h3>Ready for Clinical Risk Assessment</h3>
+            <p>Select a preset test patient or complete the discharge form, then click <strong>Assess Readmission Risk</strong> to run calibrated XGBoost inference and SHAP explainability.</p>
+          </div>
+
+          <!-- Active Output State -->
+          <div id="activeResults" class="active-results hidden">
+            <!-- Alert / Ineligible Banner -->
+            <div id="eligibilityBanner" class="alert-banner hidden"></div>
+
+            <!-- Risk Score Display -->
+            <div class="risk-summary-grid">
+              <div class="risk-gauge-card">
+                <div class="gauge-label">Estimated 30-Day Readmission Risk</div>
+                <div class="gauge-value-container">
+                  <span id="riskPercentage" class="gauge-value">--%</span>
+                  <span id="riskProbabilityRaw" class="gauge-sub">Probability: 0.00</span>
+                </div>
+                <div class="progress-bar-container">
+                  <div id="riskBar" class="progress-bar" style="width: 0%;"></div>
+                  <div class="threshold-marker" title="Decision Threshold (0.15)"></div>
+                </div>
+                <div class="gauge-footer">
+                  <span>Low &lt; 0.12</span>
+                  <span>Threshold: 0.15</span>
+                  <span>High &ge; 0.22</span>
+                </div>
+              </div>
+
+              <div class="risk-badges-card">
+                <div class="badge-item">
+                  <span class="badge-title">Clinical Review Status</span>
+                  <div id="reviewBadge" class="status-badge badge-neutral">--</div>
+                </div>
+                <div class="badge-item">
+                  <span class="badge-title">Risk Stratification Tier</span>
+                  <div id="tierBadge" class="tier-badge">--</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Recommendation Protocol -->
+            <div class="recommendation-box">
+              <div class="rec-header">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <strong>Recommended Discharge Care Pathway:</strong>
+              </div>
+              <p id="recText">--</p>
+            </div>
+
+            <!-- SHAP Explainability Breakdown -->
+            <div class="shap-section">
+              <div class="shap-header">
+                <h3>SHAP Explainability: Key Clinical Drivers</h3>
+                <span class="shap-tag">Exact Shapley Attributions</span>
+              </div>
+              <p class="shap-intro">
+                Feature contributions explain why the model arrived at this estimate.
+              </p>
+
+              <!-- Risk Increasing Drivers -->
+              <div class="factors-group">
+                <h4 class="factors-title red">
+                  <span class="indicator red">▲</span> Top Risk-Increasing Factors (+SHAP)
+                </h4>
+                <div id="increasingFactors" class="factors-list"></div>
+              </div>
+
+              <!-- Protective Drivers -->
+              <div class="factors-group">
+                <h4 class="factors-title green">
+                  <span class="indicator green">▼</span> Top Protective / Risk-Decreasing Factors (-SHAP)
+                </h4>
+                <div id="decreasingFactors" class="factors-list"></div>
+              </div>
+
+              <div class="clinical-disclaimer" id="shapDisclaimer">
+                SHAP feature attributions describe statistical model associations and do not establish causal clinical mechanisms.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empirical Model Metrics Summary Tab -->
+        <div class="model-governance-footer">
+          <button type="button" class="btn-link" onclick="toggleMetricsModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            View Locked Test Performance Metrics (ROC-AUC 0.670 | PR-AUC 0.221)
+          </button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Metrics Modal -->
+  <div id="metricsModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Empirical Model Evaluation (Locked Test Cohort: N=19,688)</h3>
+        <button type="button" class="btn-close" onclick="toggleMetricsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <table class="metrics-table">
+          <thead>
+            <tr><th>Metric</th><th>Locked Test Set Value</th><th>Clinical Interpretation</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>ROC-AUC</td><td><strong>0.6699</strong></td><td>Ranking discrimination across all decision thresholds</td></tr>
+            <tr><td>PR-AUC (Avg Precision)</td><td><strong>0.2205</strong></td><td>Substantial lift over baseline readmission prevalence (10.86%)</td></tr>
+            <tr><td>Sensitivity / Recall</td><td><strong>32.91%</strong></td><td>704 of 2,139 readmissions flagged for intervention at threshold 0.15</td></tr>
+            <tr><td>Specificity</td><td><strong>87.08%</strong></td><td>15,282 routine discharges allowed without review burden</td></tr>
+            <tr><td>Precision</td><td><strong>23.70%</strong></td><td>1 in ~4.2 flagged patients experienced actual 30-day readmission</td></tr>
+            <tr><td>Brier Score</td><td><strong>0.0927</strong></td><td>Well-calibrated probabilities via patient-disjoint sigmoid calibration</td></tr>
+            <tr><td>Cases Flagged</td><td><strong>15.09% (2,971)</strong></td><td>Targeted operational review workload for discharge coordinators</td></tr>
+          </tbody>
+        </table>
+        <div class="modal-note">
+          <strong>Cohort Governance:</strong> Pre-filtered for death & hospice (IDs 11, 13, 14, 19, 20, 21). Zero patient overlap between splits verified.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

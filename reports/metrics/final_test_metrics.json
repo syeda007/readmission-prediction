@@ -1,0 +1,21 @@
+{
+  "threshold": 0.15,
+  "roc_auc": 0.6699,
+  "pr_auc": 0.2205,
+  "accuracy": 0.812,
+  "balanced_accuracy": 0.6,
+  "precision": 0.237,
+  "recall_sensitivity": 0.3291,
+  "specificity": 0.8708,
+  "f1_score": 0.2755,
+  "brier_score": 0.0927,
+  "cases_flagged_count": 2971,
+  "cases_flagged_pct": 15.09,
+  "tp": 704,
+  "tn": 15282,
+  "fp": 2267,
+  "fn": 1435,
+  "total_encounters": 19688,
+  "actual_readmitted": 2139,
+  "prevalence_pct": 10.86
+}
