@@ -96,6 +96,58 @@ def calculate_metrics(
     }
 
 
+def bootstrap_confidence_intervals(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    groups: np.ndarray,
+    threshold: float,
+    n_boot: int = 1000,
+    alpha: float = 0.05,
+    random_state: int = 42,
+) -> Dict[str, Dict[str, float]]:
+    """
+    Patient-clustered bootstrap: resamples whole patients (with all their encounters) so that
+    repeated admissions of the same person do not make the intervals look narrower than they are.
+    Returns {metric: {"estimate", "lower", "upper"}} for a (1 - alpha) interval.
+    """
+    y_true = np.asarray(y_true)
+    y_prob = np.asarray(y_prob)
+    order = np.argsort(groups, kind="stable")
+    _, starts, counts = np.unique(np.asarray(groups)[order], return_index=True, return_counts=True)
+    rng = np.random.default_rng(random_state)
+
+    def metrics(yt, yp):
+        pred = yp >= threshold
+        tp = np.sum(pred & (yt == 1))
+        return {
+            "roc_auc": roc_auc_score(yt, yp),
+            "pr_auc": average_precision_score(yt, yp),
+            "recall_sensitivity": tp / max(np.sum(yt == 1), 1),
+            "precision": tp / max(np.sum(pred), 1),
+            "specificity": np.sum(~pred & (yt == 0)) / max(np.sum(yt == 0), 1),
+            "brier_score": brier_score_loss(yt, yp),
+        }
+
+    samples = {k: [] for k in metrics(y_true, y_prob)}
+    for _ in range(n_boot):
+        picked = rng.integers(0, len(starts), len(starts))
+        lengths = counts[picked]
+        offsets = np.repeat(starts[picked] - np.concatenate(([0], np.cumsum(lengths)[:-1])), lengths)
+        rows = order[np.arange(lengths.sum()) + offsets]
+        for k, v in metrics(y_true[rows], y_prob[rows]).items():
+            samples[k].append(v)
+
+    point = metrics(y_true, y_prob)
+    return {
+        k: {
+            "estimate": round(float(point[k]), 4),
+            "lower": round(float(np.quantile(v, alpha / 2)), 4),
+            "upper": round(float(np.quantile(v, 1 - alpha / 2)), 4),
+        }
+        for k, v in samples.items()
+    }
+
+
 def plot_roc_curves(
     model_predictions: Dict[str, Tuple[np.ndarray, np.ndarray]],
     save_path: str,

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReadmitAI EHR — Follow-ups</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="ehr.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <a class="brand" href="index.html">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <div>
+          <div class="brand-name">ReadmitAI EHR</div>
+          <div class="brand-sub">30-day readmission risk at discharge</div>
+        </div>
+      </a>
+      <span class="synthetic-badge">Synthetic data</span>
+      <nav class="nav">
+        <a href="followups.html" class="active">Follow-ups<span class="nav-badge hidden" id="navFollowupsBadge"></span></a>
+        <a href="index.html#worklist">Worklist</a>
+        <a href="index.html#patients">Patients</a>
+        <a href="../index.html">Risk calculator</a>
+        <a href="/docs" target="_blank" rel="noopener">API</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="card fu-hero">
+      <div>
+        <h1 id="heroTitle">Today's follow-ups</h1>
+        <p id="heroSub">Loading…</p>
+      </div>
+      <div class="fu-progress" title="Tasks completed today">
+        <svg class="ring" viewBox="0 0 80 80">
+          <circle class="track" cx="40" cy="40" r="34"/>
+          <circle class="bar" id="ringBar" cx="40" cy="40" r="34" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+        </svg>
+        <div>
+          <div class="ring-label" id="ringLabel">0</div>
+          <div class="ring-sub">done today</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="fu-chips">
+      <button class="fu-chip" data-jump="overdue"><span class="dot fill-high"></span><div><div class="n" id="cOverdue">–</div><div class="l">Overdue</div></div></button>
+      <button class="fu-chip" data-jump="today"><span class="dot fill-moderate"></span><div><div class="n" id="cToday">–</div><div class="l">Due today</div></div></button>
+      <button class="fu-chip" data-jump="upcoming"><span class="dot" style="background:var(--primary)"></span><div><div class="n" id="cUpcoming">–</div><div class="l">Upcoming</div></div></button>
+      <button class="fu-chip" data-view="done"><span class="dot fill-low"></span><div><div class="n" id="cDone">–</div><div class="l">Completed</div></div></button>
+    </section>
+
+    <div class="fu-toolbar">
+      <div class="segmented" role="tablist">
+        <button class="active" data-view="open">To do</button>
+        <button data-view="done">Completed</button>
+      </div>
+      <input type="search" id="search" placeholder="Search patient or MRN">
+    </div>
+
+    <div id="board"></div>
+
+    <p class="muted small" style="margin-top:8px">
+      Tasks are created automatically for every discharge flagged by the model (risk ≥ 15%). High risk: call within
+      48 h, pharmacist review and a visit within 72 h. Moderate risk: call within 7 days and confirm an appointment.
+      “No answer” and “Left voicemail” move the call to tomorrow. Phone numbers are fictional (555-01xx).
+    </p>
+  </main>
+
+  <script src="ehr.js"></script>
+  <script src="followups.js"></script>
+</body>
+</html>

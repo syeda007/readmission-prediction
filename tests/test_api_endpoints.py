@@ -91,13 +91,52 @@ def test_predict_ineligible_discharge_rejection():
     ineligible_payload = {
         "age": "[80-90)",
         "gender": "Male",
+        "admission_type_id": 1,
+        "admission_source_id": 7,
         "discharge_disposition_id": 11,
         "time_in_hospital": 3,
+        "number_inpatient": 0,
+        "number_emergency": 0,
+        "number_outpatient": 0,
+        "num_medications": 10,
+        "num_lab_procedures": 30,
+        "num_procedures": 0,
+        "number_diagnoses": 5,
+        "diag_1": "486",
+        "change": "No",
+        "diabetesMed": "No",
     }
     response = client.post("/predict", json=ineligible_payload)
     assert response.status_code == 422
     data = response.json()
     assert "death or hospice" in data["detail"].lower()
+
+
+def test_predict_rejects_incomplete_payload():
+    """Required clinical fields must not be silently defaulted."""
+    response = client.post("/predict", json={"time_in_hospital": 3, "discharge_disposition_id": 1})
+    assert response.status_code == 422
+    missing = {err["loc"][-1] for err in response.json()["detail"]}
+    assert {"age", "gender", "number_inpatient", "diag_1"} <= missing
+
+
+def test_explanation_describes_patients_actual_values():
+    """One-hot SHAP columns are aggregated: a SNF discharge must not be explained as 'discharged home'."""
+    payload = {
+        "age": "[70-80)", "gender": "Female", "race": "Caucasian",
+        "admission_type_id": 1, "admission_source_id": 7, "discharge_disposition_id": 3,
+        "time_in_hospital": 6, "number_inpatient": 3, "number_emergency": 2, "number_outpatient": 0,
+        "num_medications": 20, "num_lab_procedures": 50, "num_procedures": 1, "number_diagnoses": 9,
+        "diag_1": "428", "diag_2": "250", "diag_3": "585", "insulin": "Up", "change": "Ch", "diabetesMed": "Yes",
+    }
+    exp = client.post("/explain", json=payload).json()["explanation"]
+    factors = exp["risk_increasing_factors"] + exp["risk_decreasing_factors"]
+    features = [f["raw_feature"] for f in factors]
+    assert len(features) == len(set(features))
+    for f in factors:
+        if f["raw_feature"] == "discharge_disposition_id":
+            assert "nursing facility" in f["description"].lower()
+        assert "_" not in f["description"].split(":")[0]
 
 
 def test_explain_endpoint_success():

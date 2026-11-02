@@ -14,110 +14,85 @@ import matplotlib.pyplot as plt
 import shap
 
 from src.preprocessing import get_transformed_feature_names
+from src.clinical_codes import (
+    ADMISSION_SOURCE_LABELS,
+    ADMISSION_TYPE_LABELS,
+    DIABETES_MEDICATIONS,
+    DIAGNOSIS_SLOT_LABELS,
+    DISCHARGE_DISPOSITION_LABELS,
+    LAB_A1C,
+    LAB_GLUCOSE,
+    MED_STATUS,
+    NUMERIC_LABELS,
+    payer_label,
+    race_label,
+    specialty_label,
+)
 
-DISCHARGE_ID_MAP = {
-    "1": "Discharged to home with self-care",
-    "2": "Transferred to another short-term hospital",
-    "3": "Discharged/transferred to SNF (Skilled Nursing Facility)",
-    "4": "Discharged/transferred to ICF (Intermediate Care)",
-    "5": "Transferred to other inpatient care institution",
-    "6": "Discharged to home with Home Health Service",
-    "7": "Left against medical advice (AMA)",
-    "8": "Discharged to home under care of Home IV provider",
-    "18": "Discharge info unavailable/NULL",
-    "22": "Transferred to rehabilitation facility",
-    "23": "Transferred to long-term care hospital",
-    "25": "Discharge not mapped",
-    "28": "Transferred to psychiatric hospital",
-}
-
-ADMISSION_TYPE_MAP = {
-    "1": "Emergency admission",
-    "2": "Urgent admission",
-    "3": "Elective admission",
-    "4": "Newborn admission",
-    "5": "Trauma Center admission",
-    "7": "Trauma Center admission",
-}
-
-NUMERIC_DESCRIPTIONS = {
-    "number_inpatient": "Prior Inpatient Admissions",
-    "number_emergency": "Prior Emergency Room Visits",
-    "number_outpatient": "Prior Outpatient Visits",
-    "time_in_hospital": "Length of Hospital Stay (Days)",
-    "num_medications": "Total Inpatient Medications Prescribed",
-    "num_lab_procedures": "Lab Procedures Performed",
-    "num_procedures": "Non-Lab Procedures Performed",
-    "number_diagnoses": "Total Secondary Diagnoses Recorded",
-}
-
-
-def humanize_feature_attribution(feature_name: str, shap_val: float) -> Dict[str, Any]:
+def describe_feature(column: str, value: Any, shap_val: float) -> Dict[str, Any]:
     """
-    Translates an encoded feature name and SHAP value into a clinician-friendly narrative.
+    Translates one original (pre-encoding) feature, the patient's value for it,
+    and its summed SHAP contribution into a clinician-friendly statement.
     """
-    clean_name = feature_name
-    description = feature_name
+    value_str = "" if value is None or (isinstance(value, float) and np.isnan(value)) else str(value)
 
-    # Check numeric features
-    for num_col, desc in NUMERIC_DESCRIPTIONS.items():
-        if num_col in feature_name:
-            clean_name = desc
-            direction = "elevated" if shap_val > 0 else "lower"
-            description = f"{desc}: Patient's {desc.lower()} is a key {direction} risk factor."
-            break
-
-    # Check categorical features
-    if "discharge_disposition_id" in feature_name:
-        disch_id = feature_name.split("_")[-1]
-        desc = DISCHARGE_ID_MAP.get(disch_id, f"Discharge status code {disch_id}")
-        clean_name = "Discharge Disposition"
-        description = f"Discharge Destination: {desc}"
-    elif "admission_type_id" in feature_name:
-        adm_id = feature_name.split("_")[-1]
-        desc = ADMISSION_TYPE_MAP.get(adm_id, f"Admission type code {adm_id}")
-        clean_name = "Admission Type"
-        description = f"Admission Urgency: {desc}"
-    elif "diag_1_group" in feature_name:
-        diag = feature_name.replace("diag_1_group_", "").replace("cat__", "")
-        clean_name = "Primary Diagnosis"
-        description = f"Primary Diagnosis Category: {diag} condition"
-    elif "diag_2_group" in feature_name or "diag_3_group" in feature_name:
-        diag = feature_name.split("_")[-1]
-        clean_name = "Secondary Diagnosis"
-        description = f"Secondary Comorbidity: {diag} condition"
-    elif "A1Cresult" in feature_name:
-        result = feature_name.split("_")[-1]
-        clean_name = "HbA1c Glycemic Testing"
-        if result == "None":
-            description = "Glycemic Monitoring: HbA1c test was not measured during this hospital admission."
-        else:
-            description = f"Glycemic Monitoring: HbA1c result was recorded as {result}."
-    elif "max_glu_serum" in feature_name:
-        result = feature_name.split("_")[-1]
-        clean_name = "Serum Glucose Testing"
-        description = f"Blood Glucose Monitoring: Max serum glucose test was {result}."
-    elif "medical_specialty" in feature_name:
-        spec = feature_name.replace("medical_specialty_", "").replace("cat__", "")
-        clean_name = "Admitting Medical Specialty"
-        description = f"Admitting Specialty: {spec}"
-    elif "age" in feature_name:
-        age_group = feature_name.replace("age_", "").replace("cat__", "")
-        clean_name = "Patient Age Bracket"
-        description = f"Patient Age Group: {age_group}"
-    elif "insulin" in feature_name and "glyburide" not in feature_name:
-        status = feature_name.split("_")[-1]
-        clean_name = "Insulin Regimen"
-        description = f"Insulin Status: Regimen status was '{status}'."
-
-    impact_label = "Increases Risk" if shap_val > 0 else "Decreases Risk"
+    if column in NUMERIC_LABELS:
+        label = NUMERIC_LABELS[column]
+        shown = int(float(value_str)) if value_str else "not recorded"
+        description = f"{label}: {shown}"
+    elif column == "discharge_disposition_id":
+        label = "Discharge destination"
+        description = f"{label}: {DISCHARGE_DISPOSITION_LABELS.get(value_str, f'code {value_str}')}"
+    elif column == "admission_type_id":
+        label = "Admission type"
+        description = f"{label}: {ADMISSION_TYPE_LABELS.get(value_str, f'code {value_str}')}"
+    elif column == "admission_source_id":
+        label = "Admission source"
+        description = f"{label}: {ADMISSION_SOURCE_LABELS.get(value_str, f'code {value_str}')}"
+    elif column in DIAGNOSIS_SLOT_LABELS:
+        label = DIAGNOSIS_SLOT_LABELS[column]
+        description = f"{label} group: not recorded" if value_str == "Missing" else f"{label} group: {value_str}"
+    elif column == "A1Cresult":
+        label = "HbA1c testing"
+        description = "HbA1c was not measured during this admission" if value_str == "None" else f"HbA1c result: {LAB_A1C.get(value_str, value_str)}"
+    elif column == "max_glu_serum":
+        label = "Serum glucose testing"
+        description = "Serum glucose was not measured during this admission" if value_str == "None" else f"Max serum glucose: {LAB_GLUCOSE.get(value_str, value_str)}"
+    elif column == "medical_specialty":
+        label = "Admitting specialty"
+        shown = {"Missing_Specialty": "not recorded", "Other_Specialty": "other (less common) specialty"}.get(value_str) or specialty_label(value_str)
+        description = f"{label}: {shown}"
+    elif column == "payer_code":
+        label = "Insurance payer"
+        description = f"{label}: not recorded" if value_str == "Missing_Payer" else f"{label}: {payer_label(value_str)}"
+    elif column == "age":
+        label = "Age group"
+        description = f"{label}: {value_str.strip('[)').replace('-', '–')} years"
+    elif column == "gender":
+        label = "Gender"
+        description = f"{label}: {value_str}"
+    elif column == "race":
+        label = "Race"
+        description = f"{label}: {'not recorded' if value_str == 'Missing_Race' else race_label(value_str)}"
+    elif column == "change":
+        label = "Diabetes medication change"
+        description = "Diabetes medication was changed during the stay" if value_str == "Ch" else "No diabetes medication change during the stay"
+    elif column == "diabetesMed":
+        label = "Diabetes medication"
+        description = "Diabetes medication prescribed" if value_str == "Yes" else "No diabetes medication prescribed"
+    elif column in DIABETES_MEDICATIONS:
+        label = column.capitalize()
+        description = f"{label}: {MED_STATUS.get(value_str, value_str).lower()}"
+    else:
+        label = column
+        description = f"{column}: {value_str}"
 
     return {
-        "raw_feature": feature_name,
-        "feature_name": clean_name,
+        "raw_feature": column,
+        "feature_name": label,
         "description": description,
         "shap_value": round(float(shap_val), 4),
-        "impact": impact_label,
+        "impact": "Increases Risk" if shap_val > 0 else "Decreases Risk",
     }
 
 
@@ -142,12 +117,34 @@ class ReadmitAIExplainer:
         X_prep = self.prep_step.transform(X_fe)
         return X_prep
 
+    def source_columns(self) -> List[str]:
+        """
+        Maps every encoded model column back to the original feature it came from,
+        e.g. 'discharge_disposition_id_3' -> 'discharge_disposition_id'.
+        """
+        columns = []
+        for name, transformer, cols in self.prep_step.transformers_:
+            if name == "remainder" or transformer == "drop":
+                continue
+            last_step = transformer.named_steps[list(transformer.named_steps.keys())[-1]]
+            if hasattr(last_step, "categories_"):
+                for col, cats in zip(cols, last_step.categories_):
+                    columns.extend([col] * len(cats))
+            else:
+                columns.extend(cols)
+        if len(columns) != len(self.feature_names):
+            raise RuntimeError("Encoded feature layout does not match the fitted preprocessor.")
+        return columns
+
     def explain_instance(self, patient_row_df: pd.DataFrame, top_k: int = 5) -> Dict[str, Any]:
         """
         Explains risk estimate for a single patient encounter.
+        One-hot columns are summed back into their original feature, so each factor
+        describes the value this patient actually has (not categories they lack).
         Returns top risk-increasing and risk-decreasing factors.
         """
-        X_prep = self.transform_features(patient_row_df)
+        X_fe = self.fe_step.transform(patient_row_df)
+        X_prep = self.prep_step.transform(X_fe)
         shap_values = self.explainer.shap_values(X_prep)
 
         # For binary classification, handle 2D or 3D SHAP outputs
@@ -160,9 +157,10 @@ class ReadmitAIExplainer:
         else:
             vals = np.array(shap_values).flatten()
 
+        per_feature = pd.Series(vals, index=self.source_columns()).groupby(level=0, sort=False).sum()
         attributions = [
-            humanize_feature_attribution(self.feature_names[i], vals[i])
-            for i in range(len(vals))
+            describe_feature(col, X_fe[col].iloc[0] if col in X_fe.columns else None, shap_val)
+            for col, shap_val in per_feature.items()
         ]
 
         increasing = sorted([a for a in attributions if a["shap_value"] > 0], key=lambda x: x["shap_value"], reverse=True)[:top_k]
@@ -172,8 +170,31 @@ class ReadmitAIExplainer:
             "risk_increasing_factors": increasing,
             "risk_decreasing_factors": decreasing,
             "top_attributions": increasing + decreasing,
-            "clinical_disclaimer": "SHAP feature attributions describe statistical model associations and do not establish causal clinical mechanisms."
+            "clinical_disclaimer": (
+                "Factor weights are SHAP contributions in log-odds units of the underlying model; "
+                "they show relative influence, not percentage points. They describe statistical "
+                "associations and do not establish causal clinical mechanisms."
+            ),
         }
+
+    def global_feature_importance(self, X_sample: pd.DataFrame) -> List[Dict[str, Any]]:
+        """
+        Mean |SHAP| per original feature (one-hot columns summed per patient first),
+        as a share of total influence. Sorted from most to least influential.
+        """
+        X_prep = self.transform_features(X_sample)
+        shap_values = self.explainer.shap_values(X_prep)
+        if isinstance(shap_values, list):
+            shap_values = shap_values[1]
+        elif len(shap_values.shape) == 3:
+            shap_values = shap_values[:, :, 1]
+        per_feature = pd.DataFrame(shap_values, columns=self.source_columns()).T.groupby(level=0).sum().T
+        mean_abs = per_feature.abs().mean().sort_values(ascending=False)
+        share = mean_abs / mean_abs.sum()
+        return [
+            {"feature": col, "mean_abs_shap": round(float(mean_abs[col]), 4), "share_pct": round(float(share[col] * 100), 1)}
+            for col in mean_abs.index
+        ]
 
     def generate_global_plots(self, X_sample: pd.DataFrame, save_dir: str, max_display: int = 15):
         """

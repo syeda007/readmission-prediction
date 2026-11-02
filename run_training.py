@@ -1,273 +1,460 @@
 """
 ReadmitAI - Master Training & Reporting Script
-Executes the complete machine learning workflow and compiles the comprehensive model report.
+Trains the model, runs the supplementary analyses, and writes reports/model_report.md.
+
+Every number in the report is computed from the data splits, the saved model artifact,
+or the metrics JSON files - nothing is typed in by hand.
+
+Usage:
+    py -3.12 -u run_training.py                 # retrain everything, then write the report
+    py -3.12 -u run_training.py --report-only   # keep the saved model, only redo analyses + report
 """
 
+import argparse
+import json
 import os
 import sys
-import json
 import time
+
+import joblib
+import numpy as np
+import pandas as pd
 
 # Ensure project root is on sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.train import run_training_pipeline
+from src.clinical_codes import DIABETES_MEDICATIONS, DIAGNOSIS_SLOT_LABELS, NUMERIC_LABELS, race_label
+from src.data_loader import get_feature_and_target_matrices, load_all_splits
+from src.evaluate import bootstrap_confidence_intervals, calculate_metrics
+from src.prioritization import compare_prioritization_strategies, plot_prioritization_curves
+from src.train import REVIEW_CAPACITY, run_training_pipeline, select_threshold
+
+FEATURE_DISPLAY = {
+    **NUMERIC_LABELS,
+    **{k: f"{v} group" for k, v in DIAGNOSIS_SLOT_LABELS.items()},
+    "discharge_disposition_id": "Discharge destination",
+    "admission_type_id": "Admission type",
+    "admission_source_id": "Admission source",
+    "payer_code": "Insurance payer (incl. 'not recorded')",
+    "medical_specialty": "Admitting specialty",
+    "age": "Age group",
+    "gender": "Gender",
+    "race": "Race",
+    "A1Cresult": "HbA1c result / not measured",
+    "max_glu_serum": "Serum glucose result / not measured",
+    "change": "Diabetes medication changed",
+    "diabetesMed": "Diabetes medication prescribed",
+    **{m: f"{m.capitalize()} status" for m in DIABETES_MEDICATIONS},
+}
 
 
-def generate_comprehensive_report(results: dict, reports_dir: str):
-    """Generates the comprehensive academic model report in reports/model_report.md."""
+def pct(x, digits=1):
+    return f"{x * 100:.{digits}f}%"
+
+
+def ci(entry, as_pct=False, digits=3):
+    fmt = (lambda v: pct(v)) if as_pct else (lambda v: f"{v:.{digits}f}")
+    return f"{fmt(entry['estimate'])} (95% CI {fmt(entry['lower'])}–{fmt(entry['upper'])})"
+
+
+def compute_supplementary_analyses(base_dir: str) -> dict:
+    """
+    Analyses that only need the saved model: split statistics, bootstrap confidence intervals,
+    capacity/lift vs. a clinical heuristic, a first-encounter-only check, and global feature importance.
+    Writes their JSON outputs and the prioritization figure.
+    """
+    reports_dir = os.path.join(base_dir, "reports")
+    metrics_dir = os.path.join(reports_dir, "metrics")
+    fig_dir = os.path.join(reports_dir, "figures")
+    package = joblib.load(os.path.join(base_dir, "models", "readmitai_model_package.joblib"))
+    threshold = package["threshold"]
+
+    train_df, val_df, test_df = load_all_splits(validate=True)
+    splits = {}
+    for name, df in [("Training", train_df), ("Validation", val_df), ("Testing", test_df)]:
+        splits[name] = {
+            "encounters": len(df),
+            "patients": int(df["patient_nbr"].nunique()),
+            "readmitted": int(df["readmitted_30d"].sum()),
+            "rate": float(df["readmitted_30d"].mean()),
+        }
+
+    X_test, y_test = get_feature_and_target_matrices(test_df)
+    test_probs = package["pipeline"].predict_proba(X_test)[:, 1]
+    y = y_test.values
+
+    print("Bootstrapping 95% confidence intervals (1,000 patient-level resamples)...")
+    intervals = bootstrap_confidence_intervals(y, test_probs, test_df["patient_nbr"].values, threshold)
+
+    # Reference Brier score: always predicting the training prevalence
+    train_prevalence = splits["Training"]["rate"]
+    reference_brier = float(np.mean((y - train_prevalence) ** 2))
+    brier_skill = 1 - intervals["brier_score"]["estimate"] / reference_brier
+
+    # Capacity view: model ranking vs. "most prior admissions first" vs. random calls
+    rng = np.random.default_rng(42)
+    heuristic = X_test["number_inpatient"].values + rng.uniform(0, 1e-3, len(X_test))  # random tie-break
+    capacity = compare_prioritization_strategies(y, test_probs, heuristic, k_percentiles=[0.05, 0.10, 0.15, 0.20, 0.30])
+    plot_prioritization_curves(y, test_probs, heuristic, os.path.join(fig_dir, "prioritization_curves.png"))
+
+    # Sensitivity check: one encounter per patient (their first in the test split)
+    first_idx = test_df.groupby("patient_nbr")["encounter_id"].idxmin()
+    first_mask = test_df.index.isin(first_idx)
+    first_encounter = calculate_metrics(y[first_mask], test_probs[first_mask], threshold=threshold)
+
+    print("Computing global SHAP importance on 2,000 validation encounters...")
+    X_val, _ = get_feature_and_target_matrices(val_df)
+    importance = package["explainer"].global_feature_importance(X_val.sample(n=2000, random_state=42))
+
+    supplementary = {
+        "threshold": threshold,
+        "splits": splits,
+        "test_confidence_intervals": intervals,
+        "reference_brier_score": round(reference_brier, 4),
+        "brier_skill_score": round(brier_skill, 4),
+        "capacity_prioritization": capacity,
+        "first_encounter_only": first_encounter,
+        "global_feature_importance": importance,
+        "validation_metrics": package["validation_metrics"],
+        "model_trained": package["training_metadata"]["created_timestamp"],
+    }
+    with open(os.path.join(metrics_dir, "supplementary_analyses.json"), "w") as f:
+        json.dump(supplementary, f, indent=2)
+    return supplementary
+
+
+def subgroup_label(category: str, value: str) -> str:
+    if category == "age" and value.startswith("["):
+        return f"{value.strip('[)').replace('-', '–')} years"
+    if category == "race":
+        return "Not recorded" if value == "Missing/Unknown" else race_label(value)
+    return value
+
+
+def subgroup_insights(subgroup_data: dict, overall_recall: float) -> list:
+    """Plain-language findings: subgroups (n >= 100) whose recall differs from overall by >= 5 points."""
+    lines = []
+    for category, rows in subgroup_data.items():
+        for r in rows:
+            if r["sample_size"] < 100 or r["small_sample_warning"]:
+                continue
+            gap = r["recall_sensitivity"] - overall_recall
+            if abs(gap) >= 0.05:
+                direction = "higher" if gap > 0 else "lower"
+                lines.append(
+                    f"- **{category.capitalize()}: {subgroup_label(category, r['subgroup'])}** (n={r['sample_size']:,}, "
+                    f"{r['readmitted_count']} readmissions): recall {pct(r['recall_sensitivity'])}, "
+                    f"{abs(gap) * 100:.1f} points {direction} than overall ({pct(overall_recall)})."
+                )
+    if not lines:
+        lines.append(f"- No subgroup with at least 100 encounters differs from the overall recall ({pct(overall_recall)}) by 5 points or more.")
+    small = [
+        f"{c.capitalize()} {subgroup_label(c, r['subgroup'])} (n={r['sample_size']}, {r['readmitted_count']} readmissions)"
+        for c, rows in subgroup_data.items() for r in rows if r["small_sample_warning"]
+    ]
+    if small:
+        lines.append(f"- Too few encounters or readmissions to judge: {', '.join(small)}.")
+    return lines
+
+
+def generate_comprehensive_report(reports_dir: str, supp: dict):
+    """Writes reports/model_report.md entirely from computed results."""
     metrics_path = os.path.join(reports_dir, "metrics")
-    
-    with open(os.path.join(metrics_path, "model_comparison.json"), "r") as f:
+    with open(os.path.join(metrics_path, "model_comparison.json")) as f:
         comp_data = json.load(f)
-    with open(os.path.join(metrics_path, "final_test_metrics.json"), "r") as f:
-        test_metrics = json.load(f)
-    with open(os.path.join(metrics_path, "threshold_analysis.json"), "r") as f:
+    with open(os.path.join(metrics_path, "final_test_metrics.json")) as f:
+        test = json.load(f)
+    with open(os.path.join(metrics_path, "threshold_analysis.json")) as f:
         threshold_data = json.load(f)
-    with open(os.path.join(metrics_path, "subgroup_fairness_metrics.json"), "r") as f:
+    with open(os.path.join(metrics_path, "subgroup_fairness_metrics.json")) as f:
         subgroup_data = json.load(f)
 
-    report_content = f"""# ReadmitAI: Explainable 30-Day Hospital Readmission Risk Intelligence System
-## Comprehensive Machine Learning Development, Clinical Evaluation & Model Governance Report
+    t = supp["threshold"]
+    ci_ = supp["test_confidence_intervals"]
+    splits = supp["splits"]
+    comp = {row["model_name"]: row for row in comp_data}
+    xgb_base = comp["XGBoost (Baseline Unweighted)"]
+    xgb_ablation = comp["XGBoost (Ablation: No Discharge ID)"]
+    xgb_weighted = comp["XGBoost (Class Weighted)"]
+    real_models = [r for r in comp_data if not r["model_name"].startswith("Dummy")]
+    auc_range = (min(r["roc_auc"] for r in real_models), max(r["roc_auc"] for r in real_models))
+    cap_rows = supp["capacity_prioritization"]["detailed_model_metrics"]
+    heur_rows = supp["capacity_prioritization"]["detailed_heuristic_metrics"]
+    cap15 = next(r for r in cap_rows if r["capacity_pct"] == 15.0)
+    importance = supp["global_feature_importance"]
+    top2_share = importance[0]["share_pct"] + importance[1]["share_pct"]
+    first = supp["first_encounter_only"]
+    val = supp["validation_metrics"]
+    chosen_row = next(r for r in threshold_data if abs(r["threshold"] - t) < 1e-9)
+    total_patients = sum(s["patients"] for s in splits.values())
+    total_encounters = sum(s["encounters"] for s in splits.values())
 
-**Project**: Applied Data Science Academic Project  
-**Author**: Machine Learning Engineering & Healthcare Data Science Team  
-**Dataset**: Diabetes 130-US Hospitals (1999–2008), UCI Machine Learning Repository  
-**Model Version**: 1.0.0 (Production Release)  
-**Target Variable**: `readmitted_30d` (Binary: 1 = Readmitted within 30 days of discharge, 0 = Not readmitted within 30 days)  
-**Date of Training**: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}  
+    r = []
+    r.append(f"""# ReadmitAI: 30-Day Readmission Risk Model for Diabetic Inpatients
+## Model Development, Evaluation & Limitations Report
 
----
-
-## Executive Summary
-
-ReadmitAI is a clinical machine learning system developed to assess 30-day hospital readmission risk among hospitalized diabetic patients at the exact time of discharge. Using historical encounters from 130 US hospitals, we constructed a leak-free, patient-disjoint machine learning pipeline that combines gradient-boosted decision trees (XGBoost), patient-disjoint probability calibration, policy-driven decision thresholding, demographic fairness auditing, and SHAP-based clinical explainability.
-
-### Primary Results at Selected Clinical Decision Threshold (0.15)
-- **Cohort Coverage**: 99,343 valid hospital encounters (63,678 Train | 15,977 Validation | 19,688 Locked Test)
-- **Test ROC-AUC**: **{test_metrics['roc_auc']:.4f}**
-- **Test PR-AUC**: **{test_metrics['pr_auc']:.4f}** (Prevalence baseline: {test_metrics['prevalence_pct']}%)
-- **Sensitivity / Recall**: **{test_metrics['recall_sensitivity']*100:.2f}%** ({test_metrics['tp']:,} of {test_metrics['actual_readmitted']:,} readmissions detected)
-- **Specificity**: **{test_metrics['specificity']*100:.2f}%** ({test_metrics['tn']:,} of {test_metrics['total_encounters']-test_metrics['actual_readmitted']:,} non-readmissions correctly categorized)
-- **Brier Calibration Score**: **{test_metrics['brier_score']:.4f}**
-- **Clinical Review Flagging Rate**: **{test_metrics['cases_flagged_pct']}%** ({test_metrics['cases_flagged_count']:,} encounters flagged for multidisciplinary discharge review)
-
----
-
-## 1. Dataset Architecture & Split Validation
-
-### 1.1 Patient-Disjoint Partitioning
-The dataset encompasses 101,766 hospital encounters. Crucially, single patients frequently experience multiple readmissions over time. Random spliting by encounter causes catastrophic patient leakage, yielding deceptively high validation scores that collapse in clinical production. 
-
-To eliminate leakage:
-1. **Patient-Level Grouping**: All encounters belonging to a unique `patient_nbr` were strictly assigned to exactly one partition.
-2. **Zero Patient Overlap**: 
-   - Overlap between Training and Validation: **0 patients**
-   - Overlap between Training and Testing: **0 patients**
-   - Overlap between Validation and Testing: **0 patients**
-
-| Split Partition | Encounters | Unique Patients | Readmission (30d) Count | Readmission Rate | Role in Lifecycle |
-|---|---|---|---|---|---|
-| **Training** | 63,678 | 44,917 | 7,340 | 11.53% | Preprocessing fitting, model training, internal calibration |
-| **Validation** | 15,977 | 11,229 | 1,835 | 11.49% | Model selection, hyperparameter tuning, threshold optimization |
-| **Testing (Locked)** | 19,688 | 15,344 | 2,139 | 10.86% | Final one-shot unbiased generalization audit |
-
-### 1.2 Cohort Exclusions & Clinical Rationale
-1. **Death and Hospice Discharge Exclusion (`discharge_disposition_id` in [11, 13, 14, 19, 20, 21])**:
-   - Encounters where the patient expired in-hospital (11, 19, 20, 21) or was discharged to home/facility hospice (13, 14) were rigorously excluded.
-   - *Rationale*: A deceased patient or a patient enrolled in terminal hospice care cannot, by definition, experience an acute hospital readmission. Including them artificially inflates specificity and causes survivorship bias.
-2. **Missing Feature Exclusions**:
-   - `weight`: Excluded due to ~96.86% missingness across the cohort.
-3. **Constant Feature Exclusions**:
-   - `acetohexamide`, `examide`, `citoglipton`, `metformin-pioglitazone`: Dropped because they had zero variance in the training distribution.
-4. **Mandatory Leakage Exclusions**:
-   - `encounter_id`, `patient_nbr`: Identifiers.
-   - `readmitted`: Direct target proxy.
-   - `readmitted_30d`: Ground truth target.
+**Project**: Applied Data Science Academic Project
+**Author**: _(add your name)_
+**Dataset**: Diabetes 130-US Hospitals (1999–2008), UCI Machine Learning Repository
+**Model version**: 1.0.0 — trained {supp['model_trained']}
+**Target**: `readmitted_30d` (1 = readmitted within 30 days of discharge, 0 = not readmitted within 30 days)
+**Report generated**: {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())} by `run_training.py` (all figures computed, none typed by hand)
 
 ---
 
-## 2. Feature Engineering & Leakage-Safe Preprocessing
+## Summary
 
-### 2.1 Deterministic ICD-9 Clinical Categorization
-The original dataset records three diagnosis codes (`diag_1`, `diag_2`, `diag_3`) with hundreds of granular ICD-9 strings. Following established medical informatics methodology (Strack et al., 2014), we deterministically mapped these into 9 clinically coherent diagnostic domains while preserving supplementary `E` (external causes of injury) and `V` (supplementary health factors) codes:
-- **Circulatory**: 390–459, 785
-- **Respiratory**: 460–519, 786
-- **Digestive**: 520–579, 787
-- **Diabetes**: 250.xx
-- **Injury & Poisoning**: 800–999
-- **Musculoskeletal**: 710–739
-- **Genitourinary**: 580–629, 788
-- **Neoplasms**: 140–239
-- **Other**: E-codes, V-codes, endocrine/metabolic (non-250), nervous system, skin
-- **Missing**: Unrecorded diagnostic positions
+ReadmitAI estimates, at discharge, the probability that a hospitalised diabetic patient is readmitted within
+30 days. It is a gradient-boosted tree model (XGBoost) with probability calibration, a capacity-based review
+threshold, and per-patient SHAP explanations, served through an API and a demonstration EHR interface.
 
-### 2.2 Preservation of Clinical 'None' Laboratory Categories
-In EHR data, laboratory tests are ordered based on clinical suspicion, not at random. The UCI dataset's `A1Cresult` and `max_glu_serum` contain a literal `'None'` category representing patients who received no glycemic testing during admission.
-- *Methodological Rule*: Missing laboratory values were explicitly preserved as `'None'` rather than being imputed with the median or mean. Failing to monitor HbA1c is a clinical care signal that correlates with post-discharge trajectories.
+**Locked test set** ({test['total_encounters']:,} encounters, {splits['Testing']['patients']:,} patients, threshold {t:.2f}):
 
-### 2.3 Strict Training-Only Fitting
-All scalers (`StandardScaler`), missing value imputers (`SimpleImputer`), and encoders (`OneHotEncoder`) were fit **strictly on the training partition**. The validation and test partitions were transformed using these locked parameters, preventing all forms of data leakage.
+| Metric | Result |
+|---|---|
+| ROC-AUC | {ci(ci_['roc_auc'])} |
+| PR-AUC | {ci(ci_['pr_auc'])} — prevalence baseline {test['prevalence_pct']:.2f}% |
+| Recall (sensitivity) | {ci(ci_['recall_sensitivity'], as_pct=True)} — {test['tp']:,} of {test['actual_readmitted']:,} readmissions |
+| Precision | {ci(ci_['precision'], as_pct=True)} |
+| Specificity | {ci(ci_['specificity'], as_pct=True)} |
+| Brier score | {ci(ci_['brier_score'], digits=4)} — reference (always predict prevalence) {supp['reference_brier_score']:.4f} |
+| Flagged for review | {test['cases_flagged_pct']:.2f}% ({test['cases_flagged_count']:,} encounters) |
+
+**What this means.** Discrimination is modest, as is typical for administrative data without labs, vital signs
+or social factors. The model cannot reliably tell which individual patient will return. What it can do is rank:
+calling the top 15% of discharges by predicted risk would reach {pct(cap15['recall_at_k'])} of all readmissions,
+{cap15['lift_at_k']:.2f}× what random selection achieves. That ranking use — prioritising limited follow-up
+capacity — is what the system is designed for.
 
 ---
 
-## 3. Machine Learning Model Comparison
+## 1. Data and Split Integrity
 
-We benchmarked four model families on the identical training set and evaluated them on the validation cohort:
-1. **Dummy Baseline**: Majority-class classifier predicting prior prevalence.
-2. **Logistic Regression (Balanced)**: L2-penalized linear model with inverse class weighting.
-3. **Random Forest**: Nonlinear ensemble (150 trees, max depth 12).
-4. **XGBoost (Baseline)**: Gradient-boosted decision trees (150 estimators, learning rate 0.08, max depth 5).
-5. **XGBoost (Class Weighted)**: Gradient boosting with `scale_pos_weight = 7.68`.
-6. **XGBoost (Discharge Disposition Ablation)**: Model trained without `discharge_disposition_id`.
+The source data contains 101,766 encounters. Encounters ending in death or hospice were removed (they cannot be
+readmitted), leaving {total_encounters:,} encounters from {total_patients:,} patients. Splitting was done by
+**patient**, so no person appears in more than one split.
 
-### Model Benchmark Table (Validation Set)
-| Model | ROC-AUC | PR-AUC | F1-Score | Recall (Sens.) | Precision | Brier Score | Training Time |
-|---|---|---|---|---|---|---|---|
-"""
+| Split | Encounters | Unique patients | Readmitted (30d) | Rate | Used for |
+|---|---|---|---|---|---|""")
+    roles = {"Training": "Fitting and internal calibration", "Validation": "Model comparison and threshold choice", "Testing": "Final one-time evaluation"}
+    for name, s in splits.items():
+        r.append(f"| **{name}** | {s['encounters']:,} | {s['patients']:,} | {s['readmitted']:,} | {pct(s['rate'], 2)} | {roles[name]} |")
+    r.append(f"""
+Patient overlap between every pair of splits is zero; this is checked automatically every time the data is loaded.
+
+**Exclusions**
+1. Discharge disposition 11, 13, 14, 19, 20, 21 (expired or hospice).
+2. `weight` (about 97% missing).
+3. `acetohexamide`, `examide`, `citoglipton`, `metformin-pioglitazone` (no variation).
+4. Identifiers and target proxies (`encounter_id`, `patient_nbr`, `readmitted`) are never model inputs.
+
+---
+
+## 2. Features and Preprocessing
+
+- **Diagnoses**: the three ICD-9 codes are grouped into 9 clinical categories (circulatory, respiratory, digestive,
+  diabetes, injury, musculoskeletal, genitourinary, neoplasms, other) following Strack et al. (2014).
+- **Lab tests**: `A1Cresult` and `max_glu_serum` keep "not measured" as its own category, since whether a test
+  was ordered is itself informative.
+- **Rare specialties** (< 500 training encounters) are grouped as "other".
+- All encoders, imputers and scalers are fitted on the training split only.
+
+---
+
+## 3. Model Comparison (Validation Set)
+
+Hyperparameters were fixed in advance, not tuned. Metrics below use a 0.50 cut-off, so recall, precision and F1
+mostly reflect whether a model uses class weighting; **compare models on ROC-AUC and PR-AUC**.
+
+| Model | ROC-AUC | PR-AUC | F1 @0.5 | Recall @0.5 | Precision @0.5 | Brier | Train time |
+|---|---|---|---|---|---|---|---|""")
     for row in comp_data:
-        report_content += (
-            f"| **{row['model_name']}** | {row['roc_auc']:.4f} | {row['pr_auc']:.4f} | "
-            f"{row['f1_score']:.4f} | {row['recall_sensitivity']*100:.1f}% | "
-            f"{row['precision']*100:.1f}% | {row['brier_score']:.4f} | {row['train_time_sec']:.2f}s |\n"
+        r.append(
+            f"| {row['model_name']} | {row['roc_auc']:.4f} | {row['pr_auc']:.4f} | {row['f1_score']:.3f} | "
+            f"{pct(row['recall_sensitivity'])} | {pct(row['precision'])} | {row['brier_score']:.4f} | {row['train_time_sec']:.1f}s |"
         )
-
-    report_content += f"""
-### Key Model Findings:
-1. **Why Accuracy Alone Is Misleading**: The Dummy classifier achieves ~88.5% accuracy simply by predicting that no patient will ever be readmitted, resulting in **0.00% recall** and missing every single readmission.
-2. **Ensemble Dominance**: Gradient-boosted decision trees (XGBoost) demonstrated superior discrimination (ROC-AUC **{comp_data[3]['roc_auc']:.4f}**, PR-AUC **{comp_data[3]['pr_auc']:.4f}**), outperforming linear logistic regression and random forest.
-3. **Discharge Disposition Feature Ablation**:
-   - Model WITH `discharge_disposition_id`: ROC-AUC = {comp_data[3]['roc_auc']:.4f}
-   - Model WITHOUT `discharge_disposition_id`: ROC-AUC = {comp_data[5]['roc_auc']:.4f}
-   - *Clinical Analysis*: Discharge disposition is an eligible, highly informative predictor at discharge (e.g. transfers to Skilled Nursing Facilities [SNF] vs. routine home discharge). Removing it causes an observable degradation in ranking discrimination. Because ReadmitAI is designed to run at the moment of discharge when disposition is known, retaining this feature is both clinically valid and statistically advantageous.
+    r.append(f"""
+**Findings**
+- All real models land between ROC-AUC {auc_range[0]:.3f} and {auc_range[1]:.3f}. The differences are small and were
+  not tested for significance; XGBoost was kept because it scored highest and supports exact SHAP explanations.
+- Class weighting did not improve ranking (ROC-AUC {xgb_weighted['roc_auc']:.4f} vs {xgb_base['roc_auc']:.4f}) and
+  distorted probabilities (Brier {xgb_weighted['brier_score']:.4f} vs {xgb_base['brier_score']:.4f}), so the final
+  model is unweighted and uses a lower decision threshold instead.
+- Removing discharge destination lowers ROC-AUC from {xgb_base['roc_auc']:.4f} to {xgb_ablation['roc_auc']:.4f}.
+  Destination is known at discharge, so it is a legitimate input.
 
 ---
 
-## 4. Class Imbalance, Calibration & Threshold Optimization
+## 4. Calibration
 
-### 4.1 Class Imbalance Trade-Offs
-With an 11.53% positive readmission rate, standard classifiers defaulting to a 0.50 cutoff fail clinically:
-- **Baseline XGBoost at 0.50 cutoff**: Misses the vast majority of positive cases (high False Negatives).
-- **Hard Class Weighting (`scale_pos_weight = 7.68`)**: Forces the model to over-predict readmissions, boosting recall at the cost of severe probability distortion and heavy false-alarm burdens.
-- **Scientifically Sound Approach**: Train gradient boosting with well-behaved probability outputs, calibrate probabilities on a patient-disjoint partition, and optimize the operational decision threshold.
+Probabilities are calibrated with Platt (sigmoid) scaling, fitted on a patient-disjoint 15% slice of the training
+split; validation and test data are not used for calibration.
 
-### 4.2 Patient-Disjoint Probability Calibration
-Because ReadmitAI exposes predicted risk percentages to clinical staff, uncalibrated classifier outputs can mislead clinicians. We split the training cohort into patient-disjoint core-train and calibration partitions and calibrated probabilities using Platt scaling (sigmoid calibration).
-- **Validation Brier Score**: Maintained an excellent score of **{test_metrics['brier_score']:.4f}**, confirming reliable probability calibration without using validation or test data for calibration fitting.
+- Validation Brier score: **{val['brier_score']:.4f}**
+- Test Brier score: **{ci_['brier_score']['estimate']:.4f}**, against {supp['reference_brier_score']:.4f} for always
+  predicting the training prevalence: a Brier skill score of **{supp['brier_skill_score']:.3f}**. Probabilities are
+  roughly right on average but only modestly sharper than the base rate (see `figures/calibration_curves.png`).
 
-### 4.3 Clinical Decision Threshold Policy (Validation Set)
-| Threshold | Recall (Sensitivity) | Precision | F1-Score | Encounters Flagged | Review Burden (%) | False Negatives | False Positives |
-|---|---|---|---|---|---|---|---|
-"""
-    for t_row in threshold_data:
-        report_content += (
-            f"| **{t_row['threshold']:.2f}** | {t_row['recall_sensitivity']*100:.1f}% | "
-            f"{t_row['precision']*100:.1f}% | {t_row['f1_score']:.3f} | "
-            f"{t_row['cases_flagged_count']:,} | {t_row['cases_flagged_pct']:.1f}% | "
-            f"{t_row['fn']:,} | {t_row['fp']:,} |\n"
+---
+
+## 5. Review Threshold
+
+**Rule:** choose the lowest threshold — the one catching the most readmissions — whose validation flag rate stays
+within the assumed review capacity of **{pct(REVIEW_CAPACITY)}** of discharges (about 1 in 6). Applied to the grid
+below, the rule selects **{t:.2f}** (validation flag rate {chosen_row['cases_flagged_pct']:.1f}%). The test set was not used.
+
+| Threshold | Recall | Precision | F1 | Flagged | Flagged % | Missed (FN) | False alarms (FP) |
+|---|---|---|---|---|---|---|---|""")
+    for row in threshold_data:
+        mark = " ◀" if abs(row["threshold"] - t) < 1e-9 else ""
+        r.append(
+            f"| {row['threshold']:.2f}{mark} | {pct(row['recall_sensitivity'])} | {pct(row['precision'])} | "
+            f"{row['f1_score']:.3f} | {row['cases_flagged_count']:,} | {row['cases_flagged_pct']:.1f}% | {row['fn']:,} | {row['fp']:,} |"
         )
-
-    report_content += f"""
-### Rationale for Selected Threshold (0.15):
-- At a threshold of **0.15**, the model identifies approximately **{test_metrics['recall_sensitivity']*100:.1f}%** of all 30-day readmissions.
-- This policy flags approximately **{test_metrics['cases_flagged_pct']:.1f}%** of discharging patients for targeted multidisciplinary intervention. In a hospital system, this translates to a manageable workload where care coordinators focus intensive discharge follow-ups on the highest-risk quintile.
-- Shifting the threshold modifies the review flag without corrupting the underlying predicted probability.
+    alt = next(row for row in threshold_data if abs(row["threshold"] - 0.12) < 1e-9)
+    r.append(f"""
+A hospital with more review capacity could lower the threshold: on validation, 0.12 would catch
+{pct(alt['recall_sensitivity'])} of readmissions while flagging {alt['cases_flagged_pct']:.1f}% of discharges.
 
 ---
 
-## 5. Final Locked Test Set Evaluation
+## 6. Locked Test Set Results
 
-The champion model (Patient-Disjoint Calibrated XGBoost at Threshold = 0.15) was evaluated **once** on the untouched 19,688 test encounters.
-
-### Clinical Confusion Matrix
+### 6.1 Confusion matrix (threshold {t:.2f})
 ```
-                            PREDICTED (Model Flag)
-                    No Review (< 0.15)   Risk Review (>= 0.15)
-ACTUAL (Outcome)
-Not Readmitted (0)     {test_metrics['tn']:,} (TN)            {test_metrics['fp']:,} (FP)       Total: {test_metrics['tn']+test_metrics['fp']:,}
-Readmitted 30d (1)     {test_metrics['fn']:,} (FN)             {test_metrics['tp']:,} (TP)       Total: {test_metrics['actual_readmitted']:,}
+                       Not flagged        Flagged
+Not readmitted      {test['tn']:>8,} (TN)   {test['fp']:>8,} (FP)   total {test['tn'] + test['fp']:,}
+Readmitted (30d)    {test['fn']:>8,} (FN)   {test['tp']:>8,} (TP)   total {test['actual_readmitted']:,}
 ```
+- **{test['fn']:,} readmissions are missed.** Standard discharge care remains the safety net for them.
+- **{test['fp']:,} false alarms** receive extra follow-up they did not strictly need.
 
-### Healthcare Impact Analysis:
-1. **True Positives ({test_metrics['tp']:,})**: Readmissions successfully detected prior to discharge, enabling targeted interventions such as post-discharge phone calls, medication reconciliation, and rapid 48-hour clinic appointments.
-2. **False Negatives ({test_metrics['fn']:,})**: High-risk patients who slipped through the model filter. In a real-world hospital, universal standard-of-care discharge instructions serve as a safety net for these patients.
-3. **False Positives ({test_metrics['fp']:,})**: Non-readmitted patients who received enhanced discharge planning. While this consumes care coordination time, preventative follow-up rarely causes clinical harm and frequently addresses secondary outpatient needs.
+Confidence intervals come from 1,000 bootstrap resamples of **patients** (all of a patient's encounters together).
+
+### 6.2 Prioritisation under limited capacity
+If staff can only call a fixed share of discharges, who gets called matters. The table compares model ranking with
+a simple rule (most prior inpatient admissions first) and with random selection.
+
+| Capacity | Calls | Model: readmissions reached | Model recall | Model lift | Heuristic recall | Random recall |
+|---|---|---|---|---|---|---|""")
+    for m, h in zip(cap_rows, heur_rows):
+        r.append(
+            f"| Top {m['capacity_pct']:.0f}% | {m['followup_capacity_count']:,} | {m['actual_readmissions_captured']:,} | "
+            f"{pct(m['recall_at_k'])} | {m['lift_at_k']:.2f}× | {pct(h['recall_at_k'])} | {pct(m['random_recall'])} |"
+        )
+    r.append(f"""
+See `figures/prioritization_curves.png`.
+
+### 6.3 Sensitivity check: one encounter per patient
+Some patients have several encounters in the test split. Keeping only each patient's first encounter
+({first['total_encounters']:,} encounters) gives ROC-AUC **{first['roc_auc']:.4f}**, recall **{pct(first['recall_sensitivity'])}**,
+precision **{pct(first['precision'])}** and prevalence {first['prevalence_pct']:.2f}%, against ROC-AUC
+{test['roc_auc']:.4f} and recall {pct(test['recall_sensitivity'])} on all encounters.
+
+Ranking ability {"changes little" if abs(first['roc_auc'] - test['roc_auc']) < 0.02 else "drops noticeably"}, but at the fixed threshold
+recall {"falls" if first['recall_sensitivity'] < test['recall_sensitivity'] else "rises"} to {pct(first['recall_sensitivity'])} and only {first['cases_flagged_pct']:.1f}% of first
+encounters are flagged. A first visit has, by definition, fewer prior admissions — the model's strongest signal —
+so **repeat patients are the easier cases**, and the model is weaker for patients it has not seen return before.
 
 ---
 
-## 6. Demographic Fairness & Subgroup Analysis
+## 7. Subgroup Analysis (Test Set)
 
-To ensure algorithmic fairness and examine potential disparities, we audited the locked test set across Age, Gender, and Race.
-
-### Subgroup Audit Table (Test Cohort)
-| Category | Subgroup | Sample Size | Readmission Prevalence | Recall (Sens.) | Precision | False Negative Rate | Small Sample Warning |
-|---|---|---|---|---|---|---|---|
-"""
-    for grp_col, rows in subgroup_data.items():
-        for r in rows:
-            warn = "YES (< 50 cases)" if r["small_sample_warning"] else "No"
-            report_content += (
-                f"| **{grp_col.capitalize()}** | {r['subgroup']} | {r['sample_size']:,} | "
-                f"{r['prevalence_pct']:.1f}% | {r['recall_sensitivity']*100:.1f}% | "
-                f"{r['precision']*100:.1f}% | {r['false_negative_rate']*100:.1f}% | {warn} |\n"
+| Category | Subgroup | n | Readmitted | Prevalence | Recall | Precision | False-negative rate | Caution |
+|---|---|---|---|---|---|---|---|---|""")
+    for category, rows in subgroup_data.items():
+        for row in rows:
+            caution = "Yes (n < 50 or < 10 readmissions)" if row["small_sample_warning"] else ""
+            r.append(
+                f"| {category.capitalize()} | {subgroup_label(category, row['subgroup'])} | {row['sample_size']:,} | {row['readmitted_count']:,} | "
+                f"{row['prevalence_pct']:.1f}% | {pct(row['recall_sensitivity'])} | {pct(row['precision'])} | "
+                f"{pct(row['false_negative_rate'])} | {caution} |"
             )
-
-    report_content += """
-### Subgroup Insights:
-1. **Prevalence Across Race**: Baseline readmission prevalence remains remarkably consistent across Caucasian (~10.9%), African American (~11.1%), and Hispanic (~9.8%) patients.
-2. **Equitable Sensitivity**: The model achieves balanced sensitivity across major racial categories, indicating that the feature representation does not heavily favor a single demographic.
-3. **Small-Sample Caveat**: Asian patients (N=130 in test set) and pediatric diabetic patients ([0-10), [10-20)) represent smaller cohorts in this historical dataset; caution should be exercised when generalizing predictions for these sparse sub-populations.
-
----
-
-## 7. Explainable AI (SHAP Clinical Insights)
-
-Using TreeExplainer, ReadmitAI computes exact Shapley values for both global model behavior and individual patient encounters.
-
-### Top Global Clinical Drivers of Readmission Risk:
-1. **Prior Acute Inpatient Utilization (`number_inpatient`)**: By far the strongest predictor in the entire model. Patients with frequent prior admissions exhibit sharply elevated 30-day readmission risk.
-2. **Discharge Disposition (`discharge_disposition_id`)**: Discharges to Skilled Nursing Facilities (SNF) or long-term care facilities strongly increase risk, reflecting underlying patient frailty. Discharges to home with self-care are associated with lower risk.
-3. **Emergency Department Utilization (`number_emergency`)**: High prior ED encounters indicate volatile chronic disease management or inadequate outpatient access.
-4. **Length of Stay (`time_in_hospital`) & Medication Count (`num_medications`)**: Prolonged stays and polypharmacy indicate clinical complexity and multi-system illness.
-5. **Lack of Glycemic Monitoring (`A1Cresult_None`)**: Patients discharged without an HbA1c test during admission exhibit higher statistical risk of readmission compared to patients with structured monitoring.
+    r.append("\n**Findings** (subgroups of at least 100 encounters whose recall differs from overall by 5+ points):")
+    r.extend(subgroup_insights(subgroup_data, test["recall_sensitivity"]))
+    r.append("""
+These gaps are descriptive. Most subgroups are small, so the differences carry wide uncertainty, and no
+fairness correction was applied.
 
 ---
 
-## 8. Clinical Limitations & Governance Statements
+## 8. What Drives the Predictions (SHAP)
 
-1. **Not an Autonomous Diagnostic Device**: ReadmitAI is designed as an educational and clinical decision-support tool. It must never override the clinical judgment of an attending physician or bedside care team.
-2. **Historical Data Scope**: The training data originates from US hospital encounters between 1999 and 2008. Practice patterns, diabetes pharmacotherapy (e.g., SGLT2 inhibitors and GLP-1 receptor agonists), and EHR standards have evolved significantly since that era.
-3. **Unrecorded Clinical Variables**: The UCI dataset does not include vitals, detailed lab panels (e.g. eGFR, electrolytes), social determinants of health (SDOH), diet, or medication adherence. Future EHR integration should maintain these as separate qualitative observations rather than forcing them into this locked model.
+Mean absolute SHAP contribution per original input, measured on 2,000 validation encounters, with one-hot
+columns summed back to their source field:
+
+| Rank | Input | Share of total influence |
+|---|---|---|""")
+    for i, item in enumerate(importance[:12], 1):
+        r.append(f"| {i} | {FEATURE_DISPLAY.get(item['feature'], item['feature'])} | {item['share_pct']:.1f}% |")
+    r.append(f"""
+The top two inputs — {FEATURE_DISPLAY.get(importance[0]['feature'], importance[0]['feature']).lower()} and
+{FEATURE_DISPLAY.get(importance[1]['feature'], importance[1]['feature']).lower()} — account for {top2_share:.0f}% of the model's
+signal: patients who have been in hospital recently and who are too unwell to go straight home are the ones most
+likely to return. SHAP values describe associations learned from the data, not causes; for example, a missing
+payer code is predictive because of how the source hospitals recorded data, not for any clinical reason.
 
 ---
 
-## 9. Future EHR Integration Contract
+## 9. Limitations
 
-The FastAPI backend exposes a clean, Pydantic-validated REST API for integration into the forthcoming EHR-inspired interface:
-- `POST /predict`: Generates calibrated risk percentage, review flag, risk tier, and clinical recommendations.
-- `POST /explain`: Returns the top risk-increasing and risk-decreasing clinical drivers with lay-language descriptions.
-- `GET /model/metrics`: Provides transparent access to these empirical validation and test figures.
-- `GET /health` & `GET /schema`: Supports system monitoring and client form construction.
-"""
+1. **Modest discrimination** (ROC-AUC {ci_['roc_auc']['estimate']:.2f}). About {pct(1 - ci_['recall_sensitivity']['estimate'], 0)} of readmissions are
+   missed at the chosen threshold. The model supports prioritisation; it does not replace clinical judgement.
+2. **Weaker for first-time patients.** Much of the signal comes from prior admissions, so patients without a
+   recent hospital history are flagged far less often (recall {pct(first['recall_sensitivity'])} on first encounters; section 6.3).
+3. **Old data.** Encounters are from 1999–2008; current diabetes drugs (SGLT2 inhibitors, GLP-1 agonists) and
+   coding practice (ICD-10) are absent.
+4. **Missing clinical context.** No lab values, vital signs, medication adherence or social circumstances.
+5. **Undocumented codes.** The dataset does not define its payer codes; the interface shows commonly used
+   interpretations and marks uncertain ones.
+6. **Split reproducibility.** The intermediate files used to create the patient-level splits were not kept.
+   `setup_data.py` re-creates the procedure from the UCI download, but not the exact same assignment of patients.
+7. **No external validation** on data from other hospitals or time periods.
+
+---
+
+## 10. Serving and Demonstration Interface
+
+- **API** (`api/main.py`): `POST /predict`, `POST /explain`, `GET /model/metrics`, `GET /model/info`, `GET /schema`,
+  `GET /health`, plus the `/ehr/*` endpoints used by the EHR interface. Inputs are validated (required fields,
+  known category values, real ICD-9-CM codes); death and hospice discharges are refused.
+- **EHR interface** (`static/ehr/`): discharge worklist sorted by risk, patient registry, and patient charts with
+  explanations and review status. It uses synthetic patients stored in a JSON file.
+""")
 
     report_path = os.path.join(reports_dir, "model_report.md")
     with open(report_path, "w", encoding="utf-8") as f:
-        f.write(report_content)
-    print(f"Comprehensive model report generated at: {report_path}")
+        f.write("\n".join(r))
+    print(f"Model report written to: {report_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Train ReadmitAI and/or regenerate its report.")
+    parser.add_argument("--report-only", action="store_true", help="skip training; reuse the saved model")
+    args = parser.parse_args()
+
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    reports_dir = os.path.join(base_dir, "reports")
+    t_start = time.time()
+
+    if not args.report_only:
+        run_training_pipeline(
+            data_dir=os.path.join(base_dir, "data"),
+            reports_dir=reports_dir,
+            models_dir=os.path.join(base_dir, "models"),
+            random_state=42,
+        )
+
+    # Sanity check: the saved threshold must be the one the documented rule selects
+    with open(os.path.join(reports_dir, "metrics", "threshold_analysis.json")) as f:
+        rule_threshold = select_threshold(json.load(f))
+    supp = compute_supplementary_analyses(base_dir)
+    if abs(rule_threshold - supp["threshold"]) > 1e-9:
+        raise RuntimeError(f"Saved threshold {supp['threshold']} differs from rule-selected {rule_threshold}")
+
+    generate_comprehensive_report(reports_dir, supp)
+    print(f"\nDone in {time.time() - t_start:.1f} seconds.")
 
 
 if __name__ == "__main__":
-    base_dir = os.path.abspath(os.path.dirname(__file__))
-    data_dir = os.path.join(base_dir, "data")
-    reports_dir = os.path.join(base_dir, "reports")
-    models_dir = os.path.join(base_dir, "models")
-
-    t_start = time.time()
-    results = run_training_pipeline(
-        data_dir=data_dir,
-        reports_dir=reports_dir,
-        models_dir=models_dir,
-        random_state=42
-    )
-    generate_comprehensive_report(results, reports_dir)
-    print(f"\nReadmitAI Training & Reporting completed successfully in {time.time() - t_start:.2f} seconds!")
+    main()

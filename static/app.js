@@ -191,9 +191,11 @@ function displayEligibilityError(message) {
   banner.innerHTML = `
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
     <div>
-      <strong>Cohort Exclusion Rule:</strong> ${message}
+      <strong>Cohort Exclusion Rule:</strong> <span id="eligibilityMessage"></span>
     </div>
   `;
+  document.getElementById("eligibilityMessage").textContent =
+    typeof message === "string" ? message : "Some required fields are missing or invalid.";
   banner.classList.remove("hidden");
 
   // Reset gauges
@@ -231,9 +233,9 @@ function displayResults(data) {
   const barPct = Math.min(Math.round(prob * 100 * 2), 100); // Scale up for visual clarity up to 50%
   bar.style.width = `${barPct}%`;
 
-  if (prob < 0.12) {
+  if (riskLevel.includes("Low")) {
     bar.className = "progress-bar low";
-  } else if (prob < 0.22) {
+  } else if (riskLevel.includes("Moderate")) {
     bar.className = "progress-bar moderate";
   } else {
     bar.className = "progress-bar high";
@@ -263,8 +265,8 @@ function displayResults(data) {
   // Recommendation
   const recBox = document.querySelector(".recommendation-box");
   recBox.className = "recommendation-box";
-  if (prob >= 0.22) recBox.classList.add("high");
-  else if (prob >= 0.12) recBox.classList.add("moderate");
+  if (riskLevel.includes("High")) recBox.classList.add("high");
+  else if (riskLevel.includes("Moderate")) recBox.classList.add("moderate");
 
   document.getElementById("recText").innerText = data.clinical_recommendation;
 
@@ -293,10 +295,9 @@ function renderShapFactors(explanation) {
     increasing.forEach(f => {
       const item = document.createElement("div");
       item.className = "factor-item red";
-      item.innerHTML = `
-        <span class="factor-desc">${f.description}</span>
-        <span class="factor-val red">+${f.shap_value.toFixed(3)}</span>
-      `;
+      item.innerHTML = `<span class="factor-desc"></span><span class="factor-val red"></span>`;
+      item.querySelector(".factor-desc").textContent = f.description;
+      item.querySelector(".factor-val").textContent = `+${f.shap_value.toFixed(3)}`;
       incContainer.appendChild(item);
     });
   }
@@ -307,10 +308,9 @@ function renderShapFactors(explanation) {
     decreasing.forEach(f => {
       const item = document.createElement("div");
       item.className = "factor-item green";
-      item.innerHTML = `
-        <span class="factor-desc">${f.description}</span>
-        <span class="factor-val green">${f.shap_value.toFixed(3)}</span>
-      `;
+      item.innerHTML = `<span class="factor-desc"></span><span class="factor-val green"></span>`;
+      item.querySelector(".factor-desc").textContent = f.description;
+      item.querySelector(".factor-val").textContent = f.shap_value.toFixed(3);
       decContainer.appendChild(item);
     });
   }
