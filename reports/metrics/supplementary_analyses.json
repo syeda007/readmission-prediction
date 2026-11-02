@@ -1,0 +1,535 @@
+{
+  "threshold": 0.15,
+  "splits": {
+    "Training": {
+      "encounters": 63678,
+      "patients": 44784,
+      "readmitted": 7340,
+      "rate": 0.11526743930399824
+    },
+    "Validation": {
+      "encounters": 15977,
+      "patients": 11219,
+      "readmitted": 1835,
+      "rate": 0.11485260061338173
+    },
+    "Testing": {
+      "encounters": 19688,
+      "patients": 13987,
+      "readmitted": 2139,
+      "rate": 0.10864485981308411
+    }
+  },
+  "test_confidence_intervals": {
+    "roc_auc": {
+      "estimate": 0.6699,
+      "lower": 0.6561,
+      "upper": 0.6837
+    },
+    "pr_auc": {
+      "estimate": 0.2205,
+      "lower": 0.2023,
+      "upper": 0.2396
+    },
+    "recall_sensitivity": {
+      "estimate": 0.3291,
+      "lower": 0.3049,
+      "upper": 0.3541
+    },
+    "precision": {
+      "estimate": 0.237,
+      "lower": 0.2194,
+      "upper": 0.2551
+    },
+    "specificity": {
+      "estimate": 0.8708,
+      "lower": 0.8644,
+      "upper": 0.8777
+    },
+    "brier_score": {
+      "estimate": 0.0927,
+      "lower": 0.0892,
+      "upper": 0.0963
+    }
+  },
+  "reference_brier_score": 0.0969,
+  "brier_skill_score": 0.0432,
+  "capacity_prioritization": {
+    "detailed_model_metrics": [
+      {
+        "capacity_pct": 5.0,
+        "capacity_cutoff": 0.05,
+        "followup_capacity_count": 985,
+        "actual_readmissions_captured": 314,
+        "total_actual_readmissions": 2139,
+        "precision_at_k": 0.3188,
+        "recall_at_k": 0.1468,
+        "lift_at_k": 2.93,
+        "random_expected_captured": 107,
+        "random_precision": 0.1086,
+        "random_recall": 0.05,
+        "incremental_gain_vs_random": 207
+      },
+      {
+        "capacity_pct": 10.0,
+        "capacity_cutoff": 0.1,
+        "followup_capacity_count": 1969,
+        "actual_readmissions_captured": 524,
+        "total_actual_readmissions": 2139,
+        "precision_at_k": 0.2661,
+        "recall_at_k": 0.245,
+        "lift_at_k": 2.45,
+        "random_expected_captured": 214,
+        "random_precision": 0.1086,
+        "random_recall": 0.1,
+        "incremental_gain_vs_random": 310
+      },
+      {
+        "capacity_pct": 15.0,
+        "capacity_cutoff": 0.15,
+        "followup_capacity_count": 2954,
+        "actual_readmissions_captured": 701,
+        "total_actual_readmissions": 2139,
+        "precision_at_k": 0.2373,
+        "recall_at_k": 0.3277,
+        "lift_at_k": 2.18,
+        "random_expected_captured": 321,
+        "random_precision": 0.1086,
+        "random_recall": 0.15,
+        "incremental_gain_vs_random": 380
+      },
+      {
+        "capacity_pct": 20.0,
+        "capacity_cutoff": 0.2,
+        "followup_capacity_count": 3938,
+        "actual_readmissions_captured": 840,
+        "total_actual_readmissions": 2139,
+        "precision_at_k": 0.2133,
+        "recall_at_k": 0.3927,
+        "lift_at_k": 1.96,
+        "random_expected_captured": 428,
+        "random_precision": 0.1086,
+        "random_recall": 0.2,
+        "incremental_gain_vs_random": 412
+      },
+      {
+        "capacity_pct": 30.0,
+        "capacity_cutoff": 0.3,
+        "followup_capacity_count": 5907,
+        "actual_readmissions_captured": 1104,
+        "total_actual_readmissions": 2139,
+        "precision_at_k": 0.1869,
+        "recall_at_k": 0.5161,
+        "lift_at_k": 1.72,
+        "random_expected_captured": 642,
+        "random_precision": 0.1086,
+        "random_recall": 0.3,
+        "incremental_gain_vs_random": 462
+      }
+    ],
+    "detailed_heuristic_metrics": [
+      {
+        "capacity_pct": 5.0,
+        "capacity_cutoff": 0.05,
+        "followup_capacity_count": 985,
+        "actual_readmissions_captured": 273,
+        "total_actual_readmissions": 2139,
+        "precision_at_k": 0.2772,
+        "recall_at_k": 0.1276,
+        "lift_at_k": 2.55,
+        "random_expected_captured": 107,
+        "random_precision": 0.1086,
+        "random_recall": 0.05,
+        "incremental_gain_vs_random": 166
+      },
+      {
+        "capacity_pct": 10.0,
+        "capacity_cutoff": 0.1,
+        "followup_capacity_count": 1969,
+        "actual_readmissions_captured": 447,
+        "total_actual_readmissions": 2139,
+        "precision_at_k": 0.227,
+        "recall_at_k": 0.209,
+        "lift_at_k": 2.09,
+        "random_expected_captured": 214,
+        "random_precision": 0.1086,
+        "random_recall": 0.1,
+        "incremental_gain_vs_random": 233
+      },
+      {
+        "capacity_pct": 15.0,
+        "capacity_cutoff": 0.15,
+        "followup_capacity_count": 2954,
+        "actual_readmissions_captured": 590,
+        "total_actual_readmissions": 2139,
+        "precision_at_k": 0.1997,
+        "recall_at_k": 0.2758,
+        "lift_at_k": 1.84,
+        "random_expected_captured": 321,
+        "random_precision": 0.1086,
+        "random_recall": 0.15,
+        "incremental_gain_vs_random": 269
+      },
+      {
+        "capacity_pct": 20.0,
+        "capacity_cutoff": 0.2,
+        "followup_capacity_count": 3938,
+        "actual_readmissions_captured": 715,
+        "total_actual_readmissions": 2139,
+        "precision_at_k": 0.1816,
+        "recall_at_k": 0.3343,
+        "lift_at_k": 1.67,
+        "random_expected_captured": 428,
+        "random_precision": 0.1086,
+        "random_recall": 0.2,
+        "incremental_gain_vs_random": 287
+      },
+      {
+        "capacity_pct": 30.0,
+        "capacity_cutoff": 0.3,
+        "followup_capacity_count": 5907,
+        "actual_readmissions_captured": 966,
+        "total_actual_readmissions": 2139,
+        "precision_at_k": 0.1635,
+        "recall_at_k": 0.4516,
+        "lift_at_k": 1.51,
+        "random_expected_captured": 642,
+        "random_precision": 0.1086,
+        "random_recall": 0.3,
+        "incremental_gain_vs_random": 324
+      }
+    ],
+    "strategy_comparison_table": [
+      {
+        "capacity_pct": "Top 5.0%",
+        "calls_allocated": 985,
+        "model_captured": 314,
+        "model_precision": "31.9%",
+        "model_recall": "14.7%",
+        "model_lift": "2.93x",
+        "heuristic_name": "Prior Inpatient Admissions",
+        "heuristic_captured": 273,
+        "heuristic_precision": "27.7%",
+        "heuristic_recall": "12.8%",
+        "heuristic_lift": "2.55x",
+        "random_captured": 107,
+        "random_recall": "5.0%"
+      },
+      {
+        "capacity_pct": "Top 10.0%",
+        "calls_allocated": 1969,
+        "model_captured": 524,
+        "model_precision": "26.6%",
+        "model_recall": "24.5%",
+        "model_lift": "2.45x",
+        "heuristic_name": "Prior Inpatient Admissions",
+        "heuristic_captured": 447,
+        "heuristic_precision": "22.7%",
+        "heuristic_recall": "20.9%",
+        "heuristic_lift": "2.09x",
+        "random_captured": 214,
+        "random_recall": "10.0%"
+      },
+      {
+        "capacity_pct": "Top 15.0%",
+        "calls_allocated": 2954,
+        "model_captured": 701,
+        "model_precision": "23.7%",
+        "model_recall": "32.8%",
+        "model_lift": "2.18x",
+        "heuristic_name": "Prior Inpatient Admissions",
+        "heuristic_captured": 590,
+        "heuristic_precision": "20.0%",
+        "heuristic_recall": "27.6%",
+        "heuristic_lift": "1.84x",
+        "random_captured": 321,
+        "random_recall": "15.0%"
+      },
+      {
+        "capacity_pct": "Top 20.0%",
+        "calls_allocated": 3938,
+        "model_captured": 840,
+        "model_precision": "21.3%",
+        "model_recall": "39.3%",
+        "model_lift": "1.96x",
+        "heuristic_name": "Prior Inpatient Admissions",
+        "heuristic_captured": 715,
+        "heuristic_precision": "18.2%",
+        "heuristic_recall": "33.4%",
+        "heuristic_lift": "1.67x",
+        "random_captured": 428,
+        "random_recall": "20.0%"
+      },
+      {
+        "capacity_pct": "Top 30.0%",
+        "calls_allocated": 5907,
+        "model_captured": 1104,
+        "model_precision": "18.7%",
+        "model_recall": "51.6%",
+        "model_lift": "1.72x",
+        "heuristic_name": "Prior Inpatient Admissions",
+        "heuristic_captured": 966,
+        "heuristic_precision": "16.4%",
+        "heuristic_recall": "45.2%",
+        "heuristic_lift": "1.51x",
+        "random_captured": 642,
+        "random_recall": "30.0%"
+      }
+    ]
+  },
+  "first_encounter_only": {
+    "threshold": 0.15,
+    "roc_auc": 0.651,
+    "pr_auc": 0.1762,
+    "accuracy": 0.8767,
+    "balanced_accuracy": 0.5662,
+    "precision": 0.234,
+    "recall_sensitivity": 0.1913,
+    "specificity": 0.9411,
+    "f1_score": 0.2105,
+    "brier_score": 0.0762,
+    "cases_flagged_count": 983,
+    "cases_flagged_pct": 7.03,
+    "tp": 230,
+    "tn": 12032,
+    "fp": 753,
+    "fn": 972,
+    "total_encounters": 13987,
+    "actual_readmitted": 1202,
+    "prevalence_pct": 8.59
+  },
+  "global_feature_importance": [
+    {
+      "feature": "number_inpatient",
+      "mean_abs_shap": 0.3129,
+      "share_pct": 22.4
+    },
+    {
+      "feature": "discharge_disposition_id",
+      "mean_abs_shap": 0.2423,
+      "share_pct": 17.4
+    },
+    {
+      "feature": "number_diagnoses",
+      "mean_abs_shap": 0.0714,
+      "share_pct": 5.1
+    },
+    {
+      "feature": "diag_1_group",
+      "mean_abs_shap": 0.0703,
+      "share_pct": 5.0
+    },
+    {
+      "feature": "payer_code",
+      "mean_abs_shap": 0.0682,
+      "share_pct": 4.9
+    },
+    {
+      "feature": "num_medications",
+      "mean_abs_shap": 0.0493,
+      "share_pct": 3.5
+    },
+    {
+      "feature": "diabetesMed",
+      "mean_abs_shap": 0.0482,
+      "share_pct": 3.5
+    },
+    {
+      "feature": "diag_3_group",
+      "mean_abs_shap": 0.0442,
+      "share_pct": 3.2
+    },
+    {
+      "feature": "number_emergency",
+      "mean_abs_shap": 0.0434,
+      "share_pct": 3.1
+    },
+    {
+      "feature": "time_in_hospital",
+      "mean_abs_shap": 0.0423,
+      "share_pct": 3.0
+    },
+    {
+      "feature": "insulin",
+      "mean_abs_shap": 0.0396,
+      "share_pct": 2.8
+    },
+    {
+      "feature": "medical_specialty",
+      "mean_abs_shap": 0.0379,
+      "share_pct": 2.7
+    },
+    {
+      "feature": "age",
+      "mean_abs_shap": 0.0376,
+      "share_pct": 2.7
+    },
+    {
+      "feature": "num_lab_procedures",
+      "mean_abs_shap": 0.0364,
+      "share_pct": 2.6
+    },
+    {
+      "feature": "metformin",
+      "mean_abs_shap": 0.0356,
+      "share_pct": 2.6
+    },
+    {
+      "feature": "diag_2_group",
+      "mean_abs_shap": 0.033,
+      "share_pct": 2.4
+    },
+    {
+      "feature": "num_procedures",
+      "mean_abs_shap": 0.0298,
+      "share_pct": 2.1
+    },
+    {
+      "feature": "A1Cresult",
+      "mean_abs_shap": 0.0262,
+      "share_pct": 1.9
+    },
+    {
+      "feature": "gender",
+      "mean_abs_shap": 0.0236,
+      "share_pct": 1.7
+    },
+    {
+      "feature": "admission_source_id",
+      "mean_abs_shap": 0.0191,
+      "share_pct": 1.4
+    },
+    {
+      "feature": "admission_type_id",
+      "mean_abs_shap": 0.0163,
+      "share_pct": 1.2
+    },
+    {
+      "feature": "number_outpatient",
+      "mean_abs_shap": 0.0159,
+      "share_pct": 1.1
+    },
+    {
+      "feature": "glyburide",
+      "mean_abs_shap": 0.012,
+      "share_pct": 0.9
+    },
+    {
+      "feature": "change",
+      "mean_abs_shap": 0.0109,
+      "share_pct": 0.8
+    },
+    {
+      "feature": "race",
+      "mean_abs_shap": 0.009,
+      "share_pct": 0.6
+    },
+    {
+      "feature": "glipizide",
+      "mean_abs_shap": 0.0063,
+      "share_pct": 0.5
+    },
+    {
+      "feature": "max_glu_serum",
+      "mean_abs_shap": 0.0028,
+      "share_pct": 0.2
+    },
+    {
+      "feature": "pioglitazone",
+      "mean_abs_shap": 0.0021,
+      "share_pct": 0.2
+    },
+    {
+      "feature": "glimepiride",
+      "mean_abs_shap": 0.0021,
+      "share_pct": 0.1
+    },
+    {
+      "feature": "nateglinide",
+      "mean_abs_shap": 0.0019,
+      "share_pct": 0.1
+    },
+    {
+      "feature": "rosiglitazone",
+      "mean_abs_shap": 0.0016,
+      "share_pct": 0.1
+    },
+    {
+      "feature": "repaglinide",
+      "mean_abs_shap": 0.001,
+      "share_pct": 0.1
+    },
+    {
+      "feature": "chlorpropamide",
+      "mean_abs_shap": 0.0006,
+      "share_pct": 0.0
+    },
+    {
+      "feature": "glyburide-metformin",
+      "mean_abs_shap": 0.0005,
+      "share_pct": 0.0
+    },
+    {
+      "feature": "acarbose",
+      "mean_abs_shap": 0.0004,
+      "share_pct": 0.0
+    },
+    {
+      "feature": "metformin-rosiglitazone",
+      "mean_abs_shap": 0.0,
+      "share_pct": 0.0
+    },
+    {
+      "feature": "glimepiride-pioglitazone",
+      "mean_abs_shap": 0.0,
+      "share_pct": 0.0
+    },
+    {
+      "feature": "glipizide-metformin",
+      "mean_abs_shap": 0.0,
+      "share_pct": 0.0
+    },
+    {
+      "feature": "miglitol",
+      "mean_abs_shap": 0.0,
+      "share_pct": 0.0
+    },
+    {
+      "feature": "tolazamide",
+      "mean_abs_shap": 0.0,
+      "share_pct": 0.0
+    },
+    {
+      "feature": "tolbutamide",
+      "mean_abs_shap": 0.0,
+      "share_pct": 0.0
+    },
+    {
+      "feature": "troglitazone",
+      "mean_abs_shap": 0.0,
+      "share_pct": 0.0
+    }
+  ],
+  "validation_metrics": {
+    "threshold": 0.5,
+    "roc_auc": 0.6711,
+    "pr_auc": 0.2277,
+    "accuracy": 0.8853,
+    "balanced_accuracy": 0.5117,
+    "precision": 0.5158,
+    "recall_sensitivity": 0.0267,
+    "specificity": 0.9967,
+    "f1_score": 0.0508,
+    "brier_score": 0.0972,
+    "cases_flagged_count": 95,
+    "cases_flagged_pct": 0.59,
+    "tp": 49,
+    "tn": 14096,
+    "fp": 46,
+    "fn": 1786,
+    "total_encounters": 15977,
+    "actual_readmitted": 1835,
+    "prevalence_pct": 11.49
+  },
+  "model_trained": "2026-10-22T15:43:30Z"
+}

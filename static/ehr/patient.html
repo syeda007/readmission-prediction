@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReadmitAI EHR — Patient Chart</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="ehr.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <a class="brand" href="index.html">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <div>
+          <div class="brand-name">ReadmitAI EHR</div>
+          <div class="brand-sub">30-day readmission risk at discharge</div>
+        </div>
+      </a>
+      <span class="synthetic-badge">Synthetic data</span>
+      <nav class="nav">
+        <a href="followups.html">Follow-ups<span class="nav-badge hidden" id="navFollowupsBadge"></span></a>
+        <a href="index.html#worklist">Worklist</a>
+        <a href="index.html#patients" class="active">Patients</a>
+        <a href="../index.html">Risk calculator</a>
+        <a href="/docs" target="_blank" rel="noopener">API</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <p style="margin-bottom:12px"><a href="index.html#patients">← All patients</a></p>
+
+    <div class="empty card hidden" id="notFound">Patient not found. <a href="index.html#patients">Back to registry</a></div>
+
+    <section class="card patient-banner" id="banner"></section>
+
+    <div class="chart-layout" id="chartLayout">
+      <!-- Admission history -->
+      <aside class="card">
+        <div class="card-head">
+          <h2>Admissions</h2>
+          <button class="btn btn-primary" id="btnNewAdmission">+ New</button>
+        </div>
+        <ul class="adm-list" id="admList"></ul>
+        <div class="empty hidden" id="admEmpty">No admissions yet.</div>
+      </aside>
+
+      <!-- Encounter detail -->
+      <section class="card hidden" id="detailCard">
+        <div class="card-head">
+          <h2 id="detailTitle">Admission</h2>
+          <span class="muted small" id="detailMeta"></span>
+        </div>
+        <div class="card-body" id="detailBody"></div>
+      </section>
+
+      <!-- New admission form -->
+      <section class="card hidden" id="formCard">
+        <div class="card-head">
+          <h2>Record discharge &amp; assess risk</h2>
+          <button class="btn btn-ghost" id="btnCancelForm">Cancel</button>
+        </div>
+        <form class="card-body" id="encounterForm" novalidate>
+          <div class="form-error hidden" id="encounterError"></div>
+
+          <div class="form-section">
+            <h3>1. Stay</h3>
+            <div class="grid">
+              <div><label for="admission_date">Admission date</label><input type="date" id="admission_date" name="admission_date" required></div>
+              <div><label for="discharge_date">Discharge date</label><input type="date" id="discharge_date" name="discharge_date" required></div>
+              <div><label>Length of stay</label><input id="losDisplay" disabled value="—"></div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3>2. Admission &amp; discharge</h3>
+            <div class="grid two">
+              <div><label for="admission_type_id">Admission type</label><select id="admission_type_id" name="admission_type_id" required></select></div>
+              <div><label for="admission_source_id">Admitted from</label><select id="admission_source_id" name="admission_source_id" required></select></div>
+              <div><label for="discharge_disposition_id">Discharge destination</label><select id="discharge_disposition_id" name="discharge_disposition_id" required></select></div>
+              <div><label for="medical_specialty">Admitting specialty <span class="hint">(optional)</span></label><select id="medical_specialty" name="medical_specialty"></select></div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3>3. Diagnoses (ICD-9)</h3>
+            <div class="grid two">
+              <div><label for="diag_1">Primary</label><input id="diag_1" name="diag_1" placeholder="e.g. 428" required><div class="dx-hint" id="diag_1_hint"></div></div>
+              <div><label for="diag_2">Secondary <span class="hint">(optional)</span></label><input id="diag_2" name="diag_2" placeholder="e.g. 250.02"><div class="dx-hint" id="diag_2_hint"></div></div>
+              <div><label for="diag_3">Additional <span class="hint">(optional)</span></label><input id="diag_3" name="diag_3" placeholder="e.g. 401"><div class="dx-hint" id="diag_3_hint"></div></div>
+              <div><label for="number_diagnoses">Total diagnoses recorded</label><input type="number" id="number_diagnoses" name="number_diagnoses" min="1" max="16" required></div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3>4. Visits in the past year</h3>
+            <div class="grid">
+              <div>
+                <label for="number_inpatient">Inpatient admissions</label>
+                <input type="number" id="number_inpatient" name="number_inpatient" min="0" max="25" required>
+                <div class="hint small" id="inpatientHint"></div>
+              </div>
+              <div><label for="number_emergency">Emergency visits</label><input type="number" id="number_emergency" name="number_emergency" min="0" max="50" required></div>
+              <div><label for="number_outpatient">Outpatient visits</label><input type="number" id="number_outpatient" name="number_outpatient" min="0" max="50" required></div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3>5. During this stay</h3>
+            <div class="grid">
+              <div><label for="num_lab_procedures">Lab tests</label><input type="number" id="num_lab_procedures" name="num_lab_procedures" min="1" max="150" required></div>
+              <div><label for="num_procedures">Other procedures</label><input type="number" id="num_procedures" name="num_procedures" min="0" max="10" required></div>
+              <div><label for="num_medications">Medications given</label><input type="number" id="num_medications" name="num_medications" min="1" max="100" required></div>
+              <div><label for="A1Cresult">HbA1c result</label><select id="A1Cresult" name="A1Cresult"></select></div>
+              <div><label for="max_glu_serum">Max serum glucose</label><select id="max_glu_serum" name="max_glu_serum"></select></div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3>6. Diabetes medication</h3>
+            <div class="grid">
+              <div>
+                <label for="diabetesMed">Diabetes medication prescribed</label>
+                <select id="diabetesMed" name="diabetesMed" required>
+                  <option value="">Select…</option><option value="Yes">Yes</option><option value="No">No</option>
+                </select>
+              </div>
+              <div>
+                <label for="change">Changed during stay</label>
+                <select id="change" name="change" required>
+                  <option value="">Select…</option><option value="No">No change</option><option value="Ch">Changed</option>
+                </select>
+              </div>
+              <div><label for="insulin">Insulin</label><select id="insulin" name="insulin" class="med"></select></div>
+              <div><label for="metformin">Metformin</label><select id="metformin" name="metformin" class="med"></select></div>
+            </div>
+            <details class="more">
+              <summary>Other diabetes medications (default: not prescribed)</summary>
+              <div class="grid" id="otherMeds"></div>
+            </details>
+          </div>
+
+          <div class="form-section">
+            <h3>7. Notes</h3>
+            <label for="notes">Clinical notes <span class="hint">(stored in the chart; not used by the model)</span></label>
+            <textarea id="notes" name="notes" rows="3" maxlength="2000" placeholder="e.g. Lives alone, uses a walker, visiting nurse arranged…"></textarea>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="btnSaveEncounter">Save &amp; assess risk</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script src="ehr.js"></script>
+  <script src="patient.js"></script>
+</body>
+</html>

@@ -80,16 +80,16 @@
             <div class="field">
               <label for="age">Age Bracket</label>
               <select id="age" name="age" required>
-                <option value="[0-10)">[0 - 10)</option>
-                <option value="[10-20)">[10 - 20)</option>
-                <option value="[20-30)">[20 - 30)</option>
-                <option value="[30-40)">[30 - 40)</option>
-                <option value="[40-50)">[40 - 50)</option>
-                <option value="[50-60)">[50 - 60)</option>
-                <option value="[60-70)">[60 - 70)</option>
-                <option value="[70-80)" selected>[70 - 80)</option>
-                <option value="[80-90)">[80 - 90)</option>
-                <option value="[90-100)">[90 - 100)</option>
+                <option value="[0-10)">0–10 years</option>
+                <option value="[10-20)">10–20 years</option>
+                <option value="[20-30)">20–30 years</option>
+                <option value="[30-40)">30–40 years</option>
+                <option value="[40-50)">40–50 years</option>
+                <option value="[50-60)">50–60 years</option>
+                <option value="[60-70)">60–70 years</option>
+                <option value="[70-80)" selected>70–80 years</option>
+                <option value="[80-90)">80–90 years</option>
+                <option value="[90-100)">90–100 years</option>
               </select>
             </div>
             <div class="field">
@@ -97,18 +97,17 @@
               <select id="gender" name="gender" required>
                 <option value="Female" selected>Female</option>
                 <option value="Male">Male</option>
-                <option value="Unknown/Invalid">Unknown</option>
               </select>
             </div>
             <div class="field">
               <label for="race">Race / Ethnicity</label>
               <select id="race" name="race">
-                <option value="Caucasian" selected>Caucasian</option>
-                <option value="AfricanAmerican">African American</option>
+                <option value="Caucasian" selected>White / Caucasian</option>
+                <option value="AfricanAmerican">Black / African American</option>
                 <option value="Hispanic">Hispanic</option>
                 <option value="Asian">Asian</option>
                 <option value="Other">Other</option>
-                <option value="Missing_Race">Not Recorded</option>
+                <option value="">Not Recorded</option>
               </select>
             </div>
           </div>
@@ -323,9 +322,9 @@
                   <div class="threshold-marker" title="Decision Threshold (0.15)"></div>
                 </div>
                 <div class="gauge-footer">
-                  <span>Low &lt; 0.12</span>
-                  <span>Threshold: 0.15</span>
-                  <span>High &ge; 0.22</span>
+                  <span>Low &lt; 0.15</span>
+                  <span>Review threshold: 0.15</span>
+                  <span>High &ge; 0.25</span>
                 </div>
               </div>
 
@@ -412,7 +411,7 @@
             <tr><td>Sensitivity / Recall</td><td><strong>32.91%</strong></td><td>704 of 2,139 readmissions flagged for intervention at threshold 0.15</td></tr>
             <tr><td>Specificity</td><td><strong>87.08%</strong></td><td>15,282 routine discharges allowed without review burden</td></tr>
             <tr><td>Precision</td><td><strong>23.70%</strong></td><td>1 in ~4.2 flagged patients experienced actual 30-day readmission</td></tr>
-            <tr><td>Brier Score</td><td><strong>0.0927</strong></td><td>Well-calibrated probabilities via patient-disjoint sigmoid calibration</td></tr>
+            <tr><td>Brier Score</td><td><strong>0.0927</strong></td><td>Calibrated, but only slightly better than always predicting the base rate (0.0969)</td></tr>
             <tr><td>Cases Flagged</td><td><strong>15.09% (2,971)</strong></td><td>Targeted operational review workload for discharge coordinators</td></tr>
           </tbody>
         </table>

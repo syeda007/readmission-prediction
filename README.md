@@ -1,181 +1,177 @@
-# ReadmitAI: Explainable Hospital Readmission Risk Intelligence & Decision Support System
+# ReadmitAI: Explainable 30-Day Readmission Risk for Diabetic Inpatients
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.124.4-009688.svg)](https://fastapi.tiangolo.com/)
 [![XGBoost](https://img.shields.io/badge/XGBoost-3.4.1-orange.svg)](https://xgboost.readthedocs.io/)
 [![SHAP](https://img.shields.io/badge/SHAP-0.54.1-purple.svg)](https://shap.readthedocs.io/)
-[![Tests](https://img.shields.io/badge/Tests-19%20Passed%20(100%25)-success.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-passing-success.svg)]()
 
-> **Applied Data Science Academic Project**  
-> *A scientifically defensible, leak-free, explainable machine learning system estimating 30-day all-cause hospital readmission risk among hospitalized diabetic patients at discharge.*
+> **Applied Data Science Academic Project**
+> A leakage-controlled, explainable model that estimates, at discharge, the risk that a hospitalised diabetic
+> patient is readmitted within 30 days, plus a demonstration EHR interface that uses it to prioritise follow-up.
 
----
-
-## 1. Project Overview & Clinical Objective
-
-Hospital readmissions within 30 days of discharge represent a major burden on healthcare systems, driving patient morbidity and substantial financial penalties under CMS Hospital Readmissions Reduction Program (HRRP). 
-
-**ReadmitAI** provides an explainable clinical decision-support engine designed to operate at the exact time of hospital discharge. It combines:
-1. **Gradient-Boosted Decision Trees (XGBoost)** for nonlinear risk estimation.
-2. **Patient-Disjoint Probability Calibration (Platt Sigmoid Scaling)** to convert classifier scores into reliable risk percentages.
-3. **Policy-Driven Threshold Optimization** (selected threshold: `0.15`) that balances detection sensitivity with care coordination workloads.
-4. **SHAP (SHapley Additive exPlanations)** to expose individual risk-increasing and protective clinical drivers.
-5. **A Production-Ready FastAPI Service** with clinical cohort guardrails and an EHR demonstration interface.
+All performance figures below come from [reports/model_report.md](reports/model_report.md), which
+`run_training.py` generates from the data and the saved model.
 
 ---
 
-## 2. Dataset Architecture & Split Integrity
+## 1. Project Overview
 
-**Data Source**: Diabetes 130-US Hospitals for Years 1999–2008 ([UCI Machine Learning Repository](https://archive.ics.uci.edu/dataset/296/diabetes+130-us+hospitals+for+years+1999-2008)).
+Readmissions within 30 days are costly for patients and hospitals, and US hospitals are penalised for them under
+the CMS Hospital Readmissions Reduction Program. Follow-up capacity (phone calls, early clinic visits) is limited,
+so the practical question is **which discharged patients to contact first**.
 
-### 2.1 The Binary Prediction Target
-- `readmitted_30d`:
-  - **1**: Patient readmitted to an acute hospital within 30 days of discharge.
-  - **0**: Patient not readmitted within 30 days (including patients readmitted after 30 days or never readmitted).
+ReadmitAI combines:
+1. **XGBoost** gradient-boosted trees for risk estimation.
+2. **Platt (sigmoid) calibration**, fitted on a patient-disjoint slice of the training data, so risk percentages are meaningful.
+3. **A capacity-based review threshold** (0.15): the highest-recall threshold that flags at most 1 in 6 discharges on validation data.
+4. **SHAP explanations** showing which of the patient's own characteristics raised or lowered their risk.
+5. **A FastAPI service and EHR-style interface** with input validation and cohort guardrails (demonstration only, synthetic patients).
 
-### 2.2 Strict Patient-Disjoint Partitions
-Single patients frequently appear across multiple historical hospitalizations. To prevent catastrophic data leakage, dataset splitting was performed strictly at the **patient level** (`patient_nbr`).
+**Honest headline:** ranking ability is modest (test ROC-AUC 0.67), as is typical for administrative data. The
+model is useful for prioritisation: the top 15% of discharges by predicted risk contain about 33% of readmissions,
+2.2× what random selection reaches. It does not replace clinical judgement.
 
-| Split | Encounters | Unique Patients | Readmission (30d) Count | Readmission Rate | Role in Lifecycle |
+---
+
+## 2. Dataset & Split Integrity
+
+**Source**: Diabetes 130-US Hospitals for Years 1999–2008 ([UCI Machine Learning Repository](https://archive.ics.uci.edu/dataset/296/diabetes+130-us+hospitals+for+years+1999-2008)).
+
+### 2.1 Target
+- `readmitted_30d` = **1** if readmitted within 30 days of discharge; **0** otherwise (readmitted after 30 days, or not at all).
+
+### 2.2 Patient-level splits
+Many patients have several admissions. Splitting by encounter would put the same person in training and testing
+and inflate the scores, so the data was split by **patient** (`patient_nbr`).
+
+| Split | Encounters | Unique patients | Readmitted (30d) | Rate | Used for |
 |---|---|---|---|---|---|
-| **Training** (`readmitai_final_training.csv`) | 63,678 | 44,784 | 7,340 | **11.53%** | Model fitting, internal calibration |
-| **Validation** (`readmitai_final_validation.csv`) | 15,977 | 11,219 | 1,835 | **11.49%** | Model selection, threshold tuning |
-| **Testing** (`readmitai_final_testing.csv`) | 19,688 | 13,987 | 2,139 | **10.86%** | Final locked evaluation (one-shot) |
+| **Training** | 63,678 | 44,784 | 7,340 | 11.53% | Fitting and internal calibration |
+| **Validation** | 15,977 | 11,219 | 1,835 | 11.49% | Model comparison and threshold choice |
+| **Testing** | 19,688 | 13,987 | 2,139 | 10.86% | Final one-time evaluation |
 
-**Patient Overlap Verification**:
-- Train & Validation overlap: **0 patients**
-- Train & Testing overlap: **0 patients**
-- Validation & Testing overlap: **0 patients**
+Patient overlap between splits is zero, and this is checked automatically every time the data is loaded.
 
-### 2.3 Documented Clinical Cohort Exclusions
-1. **Death and Hospice Discharge Exclusion (`discharge_disposition_id` in [11, 13, 14, 19, 20, 21])**:
-   - Patients who expired in-hospital or were discharged to hospice care cannot be readmitted to a general acute hospital. Including them introduces survivorship bias and creates clinical shortcuts.
-2. **Missing Feature Exclusions**: `weight` was dropped due to ~96.86% missingness.
-3. **Zero-Variance Feature Exclusions**: `acetohexamide`, `examide`, `citoglipton`, `metformin-pioglitazone`.
-4. **Mandatory Leakage Exclusions**: `encounter_id`, `patient_nbr`, `readmitted`, and `readmitted_30d` are strictly barred from predictor inputs.
+### 2.3 Exclusions
+1. **Death and hospice discharges** (`discharge_disposition_id` 11, 13, 14, 19, 20, 21): these patients cannot be readmitted.
+2. **`weight`**: about 97% missing.
+3. **No-variation medications**: `acetohexamide`, `examide`, `citoglipton`, `metformin-pioglitazone`.
+4. **Never used as inputs**: `encounter_id`, `patient_nbr`, `readmitted`, `readmitted_30d`.
 
 ---
 
-## 3. Project Directory Structure
+## 3. Project Structure
 
 ```
 ReadmitAI/
 ├── data/
-│   ├── readmitai_final_training.csv       # Training split (63,678 rows)
-│   ├── readmitai_final_validation.csv     # Validation split (15,977 rows)
-│   ├── readmitai_final_testing.csv        # Testing split (19,688 rows)
-│   └── IDS_mapping.csv                   # UCI ID description mappings
+│   ├── readmitai_final_{training,validation,testing}.csv   # Canonical patient-level splits
+│   ├── IDS_mapping.csv                   # UCI code descriptions (admission/discharge/source)
+│   └── icd9_descriptions.json            # ICD-9-CM code -> description (built by tools/)
 ├── src/
-│   ├── data_loader.py                    # Leak-free loading and split verification
-│   ├── feature_engineering.py            # Deterministic ICD-9 mapping & specialty grouping
-│   ├── preprocessing.py                  # Scikit-learn Pipeline & ColumnTransformer
-│   ├── train.py                          # Model training, calibration & threshold optimization
-│   ├── evaluate.py                       # Clinical metrics, ROC, PR, confusion matrix routines
-│   ├── calibration.py                    # Patient-disjoint probability calibration
-│   ├── explainability.py                 # SHAP TreeExplainer & clinical translation
-│   ├── subgroup_analysis.py              # Demographic fairness auditing (Age, Gender, Race)
-│   └── predict.py                        # Standalone inference & clinical eligibility guardrail
-├── models/
-│   └── readmitai_model_package.joblib    # Complete serialized production artifact
+│   ├── data_loader.py                    # Loading and split validation (overlap, exclusions, target)
+│   ├── feature_engineering.py            # ICD-9 grouping, specialty grouping
+│   ├── preprocessing.py                  # sklearn Pipeline / ColumnTransformer
+│   ├── train.py                          # Model comparison, calibration, threshold rule, test evaluation
+│   ├── evaluate.py                       # Metrics, bootstrap confidence intervals, plots
+│   ├── calibration.py                    # Patient-disjoint Platt calibration
+│   ├── explainability.py                 # SHAP explanations in plain language
+│   ├── subgroup_analysis.py              # Age / gender / race subgroup metrics
+│   ├── prioritization.py                 # Capacity (top-k) analysis vs. heuristic and random
+│   ├── clinical_codes.py                 # Code -> meaning: ICD-9, payer, specialty, admission/discharge
+│   ├── stacking.py                       # Experimental stacked ensemble (not used by the released model)
+│   └── predict.py                        # Inference, risk tiers, eligibility guardrail
+├── models/readmitai_model_package.joblib # Trained, calibrated model + explainer
 ├── reports/
-│   ├── figures/                          # 11 publication-quality medical visualizations
-│   │   ├── calibration_curves.png
-│   │   ├── confusion_matrix_test.png
-│   │   ├── confusion_matrix_val.png
-│   │   ├── model_comparison_bar.png
-│   │   ├── pr_curves_validation.png
-│   │   ├── prob_distribution_test.png
-│   │   ├── prob_distribution_val.png
-│   │   ├── roc_curves_validation.png
-│   │   ├── shap_bar.png
-│   │   ├── shap_summary.png
-│   │   └── subgroup_fairness.png
-│   ├── metrics/                          # Real empirical evaluation metrics JSONs
-│   │   ├── final_test_metrics.json
-│   │   ├── model_comparison.json
-│   │   ├── subgroup_fairness_metrics.json
-│   │   └── threshold_analysis.json
-│   └── model_report.md                   # Comprehensive academic and governance report
+│   ├── figures/                          # ROC, PR, calibration, confusion matrices, SHAP, subgroups, prioritisation
+│   ├── metrics/                          # JSON results, incl. supplementary_analyses.json (CIs, capacity, importance)
+│   └── model_report.md                   # Generated report
 ├── api/
-│   ├── main.py                           # FastAPI REST application
-│   └── schemas.py                        # Pydantic input/output schemas
-├── static/                               # Demonstration EHR Interface
-│   ├── index.html                        # Hospital dashboard UI
-│   ├── style.css                         # Medical styling & responsive layout
-│   └── app.js                            # Interactive client & SHAP renderer
-├── tests/
-│   ├── test_data_validation.py           # Split, cohort, and target tests
-│   ├── test_preprocessing.py             # Transformation & unseen category tests
-│   ├── test_model_inference.py           # Artifact, threshold, and eligibility tests
-│   └── test_api_endpoints.py             # FastAPI integration tests
-├── requirements.txt                      # Pinned production dependencies
-├── README.md                             # Project documentation
-└── run_training.py                       # Master one-click training & reporting script
+│   ├── main.py                           # FastAPI application
+│   ├── schemas.py                        # Validated request/response models
+│   ├── ehr.py                            # EHR endpoints (patients, admissions, worklist, ICD-9 lookup)
+│   └── ehr_store.py                      # JSON-file storage
+├── storage/ehr_store.json                # Synthetic EHR patients and scored admissions
+├── static/
+│   ├── ehr/                              # EHR interface: worklist, registry, patient chart
+│   └── index.html, app.js, style.css     # Single-patient risk calculator
+├── tests/                                # Data, preprocessing, inference, API and EHR tests
+├── tools/build_icd9_dictionary.py        # Builds data/icd9_descriptions.json from CMS/AHRQ sources
+├── setup_data.py                         # Recreates patient-level splits from the UCI zip
+├── run_training.py                       # Train + analyses + report (or --report-only)
+└── seed_ehr.py                           # Generates synthetic EHR patients
 ```
 
 ---
 
-## 4. Empirical Benchmark & Model Comparison
+## 4. Model Comparison (Validation Set)
 
-All models were fitted strictly on the training partition (`readmitai_final_training.csv`) and evaluated on the validation cohort (`readmitai_final_validation.csv`):
+Hyperparameters were fixed in advance, not tuned. Recall, precision and F1 at a 0.50 cut-off mostly show whether
+a model uses class weighting, so **compare models on ROC-AUC and PR-AUC**.
 
-| Model Candidate | ROC-AUC | PR-AUC | F1-Score | Sensitivity (Recall) | Precision | Brier Score | Training Time |
-|---|---|---|---|---|---|---|---|
-| **Dummy (Majority Baseline)** | 0.5000 | 0.1149 | 0.0000 | 0.00% | 0.00% | 0.1017 | 1.8s |
-| **Logistic Regression (Balanced)** | 0.6621 | 0.2175 | 0.2850 | 56.40% | 19.00% | 0.2249 | 6.5s |
-| **Random Forest (150 trees)** | 0.6646 | 0.2140 | 0.2780 | 54.10% | 18.70% | 0.2135 | 18.0s |
-| **XGBoost (Baseline)** | **0.6741** | **0.2326** | 0.0510 | 2.70% | 51.60% | 0.0965 | 6.2s |
-| **XGBoost (Class Weighted)** | 0.6714 | 0.2294 | 0.2820 | 58.20% | 18.60% | 0.2122 | 6.4s |
-| **XGBoost (Ablation: No Discharge ID)** | 0.6542 | 0.2068 | 0.0480 | 2.50% | 46.80% | 0.0980 | 6.2s |
+| Model | ROC-AUC | PR-AUC | F1 @0.5 | Recall @0.5 | Precision @0.5 | Brier |
+|---|---|---|---|---|---|---|
+| Dummy (always "no") | 0.500 | 0.115 | 0.000 | 0.0% | 0.0% | 0.1017 |
+| Logistic regression (balanced) | 0.662 | 0.218 | 0.276 | 54.8% | 18.5% | 0.2249 |
+| Random forest | 0.665 | 0.214 | 0.280 | 52.1% | 19.2% | 0.2135 |
+| **XGBoost (unweighted) — selected** | **0.674** | **0.233** | 0.031 | 1.6% | 56.9% | 0.0965 |
+| XGBoost (class-weighted) | 0.671 | 0.229 | 0.282 | 56.3% | 18.8% | 0.2122 |
+| XGBoost without discharge destination | 0.654 | 0.207 | 0.013 | 0.7% | 42.9% | 0.0980 |
 
-### Critical Empirical Observations:
-1. **Why Accuracy Alone Is Misleading**: A naive majority classifier yields ~88.5% accuracy while identifying **0** readmitted patients (0.0% recall).
-2. **Discharge Disposition Feature Ablation**:
-   - Including `discharge_disposition_id`: ROC-AUC = **0.6741**, PR-AUC = **0.2326**
-   - Excluding `discharge_disposition_id`: ROC-AUC = **0.6542**, PR-AUC = **0.2068**
-   - *Finding*: Discharge disposition is an eligible, highly predictive signal at discharge (e.g. SNF transfers indicate high post-acute frailty). Excluding it causes an empirical drop of ~0.02 ROC-AUC.
-3. **Threshold vs. Hard Weighting**: Instead of distorting probabilities with `scale_pos_weight` (which inflated Brier score from 0.096 to 0.212), the champion model uses **calibrated probabilities paired with an optimized decision threshold**.
+- All real models land between 0.654 and 0.674 ROC-AUC. The differences are small and were not significance-tested.
+- Class weighting did not improve ranking and distorted probabilities (Brier 0.212 vs 0.097), so the final model
+  is unweighted and uses a lower threshold instead.
+- Discharge destination is known at discharge, and removing it costs about 0.02 ROC-AUC.
 
 ---
 
-## 5. Locked Test Set Results (Threshold = 0.15)
+## 5. Locked Test Set Results (threshold 0.15)
 
-The selected champion model (Patient-Disjoint Calibrated XGBoost) was locked and evaluated **once** on the untouched 19,688 test encounters:
+95% confidence intervals come from 1,000 bootstrap resamples of patients.
 
-| Metric | Locked Test Value | Clinical Meaning |
+| Metric | Result | Meaning |
 |---|---|---|
-| **ROC-AUC** | **0.6699** | Ranking discrimination across all thresholds |
-| **PR-AUC** | **0.2205** | Double the background prevalence baseline (10.86%) |
-| **Sensitivity (Recall)** | **32.91%** | 704 of 2,139 readmitted patients detected |
-| **Specificity** | **87.08%** | 15,282 non-readmitted patients discharged without review |
-| **Precision** | **23.70%** | 1 in ~4.2 flagged patients had actual 30-day readmissions |
-| **Brier Score** | **0.0927** | High probability reliability & calibration |
-| **Clinical Review Flagged** | **15.09% (2,971)** | Workload-feasible target for discharge coordinators |
+| ROC-AUC | **0.670** (0.656–0.684) | Ranking ability: 0.5 = coin flip, 1.0 = perfect |
+| PR-AUC | **0.221** (0.202–0.240) | About 2× the 10.9% prevalence baseline |
+| Recall | **32.9%** (30.5–35.4%) | 704 of 2,139 readmissions flagged |
+| Precision | **23.7%** (21.9–25.5%) | About 1 in 4 flagged patients is readmitted |
+| Specificity | **87.1%** (86.4–87.8%) | Non-readmitted patients correctly left unflagged |
+| Brier score | **0.0927** | vs 0.0969 for always predicting the base rate: calibrated, but only modestly informative |
+| Flagged | **15.1%** (2,971) | Review workload |
 
-### Test Confusion Matrix:
-- **True Positives (TP)**: 704 (Detected readmissions)
-- **False Negatives (FN)**: 1,435 (Missed readmissions, protected by universal standard discharge protocols)
-- **False Positives (FP)**: 2,267 (Proactively followed up by care teams)
-- **True Negatives (TN)**: 15,282 (Accurately classified routine discharges)
+**Capacity view**: the top 5 / 15 / 30% of discharges by risk contain 14.7% / 32.8% / 51.6% of readmissions,
+against 12.8% / 27.6% / 45.2% for "most prior admissions first" and 5 / 15 / 30% for random selection.
 
----
-
-## 6. Demographic Fairness & Subgroup Evaluation
-
-Audited across the locked test cohort:
-- **Race**: Prevalence was consistent across Caucasian (10.9%), African American (11.1%), and Hispanic (9.8%). Model sensitivity remained equitable across major groups (Caucasian: 32.8%, African American: 34.0%, Hispanic: 30.6%).
-- **Gender**: Female recall (33.1%) and Male recall (32.7%) were virtually identical.
-- **Small Sample Caveat**: Asian patients (N=130) and pediatric diabetes encounters had smaller representation in this historical dataset; caution is documented for sparse sub-cohorts.
+**Weaker for first-time patients**: on each patient's first encounter only, ROC-AUC is 0.651, but recall at 0.15
+falls to 19.1%. The strongest signal is prior admissions, which first-time patients by definition have fewer of.
 
 ---
 
-## 7. Explainable AI with SHAP
+## 6. Subgroup Analysis (Test Set)
 
-ReadmitAI implements exact Shapley attributions via `shap.TreeExplainer`:
-1. **`number_inpatient` (Prior Inpatient Stays)**: Strongest global risk factor (+SHAP).
-2. **`discharge_disposition_id`**: Discharges to SNF (code 3) or home health (code 6) increase predicted risk; discharges to home with self-care (code 1) decrease risk.
-3. **`number_emergency`**: Higher prior emergency visits indicate chronic instability (+SHAP).
-4. **`A1Cresult_None`**: Absent glycemic monitoring during stay correlates with elevated readmission risk.
+Recall by gender: female 31.0%, male 35.1%. By race: Black / African American 35.2%, White / Caucasian 32.6%,
+Hispanic 32.3%, Asian 36.8% (n = 119), Other 24.1%, not recorded 19.1%. Recall is notably lower for patients aged
+90+ (22.7%) and those with race not recorded. Groups under 50 encounters or 10 readmissions are too small to judge.
+These are descriptive findings; no fairness correction was applied. The full table is in the report.
+
+---
+
+## 7. What Drives the Predictions (SHAP)
+
+Share of total influence (mean |SHAP| per original input, 2,000 validation encounters):
+
+| Input | Share |
+|---|---|
+| Prior inpatient admissions (past year) | 22.4% |
+| Discharge destination | 17.4% |
+| Number of diagnoses recorded | 5.1% |
+| Primary diagnosis group | 5.0% |
+| Insurance payer (including "not recorded") | 4.9% |
+
+The top two account for about 40% of the signal: patients recently in hospital and too unwell to go straight
+home are most likely to return. These are associations, not causes. A missing payer code, for example, reflects
+how hospitals recorded data. Each prediction in the API and interface comes with its own patient-level explanation.
 
 ---
 
@@ -191,18 +187,56 @@ py -3.12 -m pip install -r requirements.txt
 ```powershell
 py -3.12 -m pytest tests/ -v
 ```
-*(All 19 tests pass 100%).*
 
-### 8.3 Retrain Model & Generate Reports
+
+### 8.3 Retrain Model & Regenerate the Report
 ```powershell
-py -3.12 -u run_training.py
+py -3.12 -u run_training.py                # full retrain + analyses + report
+py -3.12 -u run_training.py --report-only  # keep the saved model; redo analyses + report (~1 min)
 ```
 
-### 8.4 Start the FastAPI Service & Demonstration UI
+### 8.3a Recreate the Splits from the UCI Download (optional)
+```powershell
+py -3.12 setup_data.py --zip "path\to\diabetes+130-us+hospitals+for+years+1999-2008.zip"
+```
+This writes to `data/regenerated/`. It follows the same procedure as the canonical splits but not the identical
+patient assignment, because the intermediate files used originally were not kept.
+
+### 8.4 Seed Synthetic Patients (first run only)
+```powershell
+py -3.12 seed_ehr.py            # add --force to rebuild the store from scratch
+```
+
+### 8.5 Start the Service
 ```powershell
 py -3.12 -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
-Open your browser at: **[http://127.0.0.1:8000/static/index.html](http://127.0.0.1:8000/static/index.html)**
+Open **[http://127.0.0.1:8000](http://127.0.0.1:8000)**. This opens the EHR worklist; the single-patient calculator is at `/static/index.html`.
+
+---
+
+## 8A. EHR Platform
+
+A lightweight EHR-style interface built on the locked model (no retraining). Hospital staff register
+patients, record each discharge, and the model scores the admission when it is saved.
+
+| Screen | What it does |
+|---|---|
+| **Discharge worklist** | Every admission, highest predicted risk first; filter by tier, review status or flagged-only; change review status inline |
+| **Patient registry** | Search patients, register new ones |
+| **Patient chart** | Admission history, risk with explanation, care-coordination status and notes, new-admission form |
+
+**Design choices**
+- **Storage:** a single JSON file (`storage/ehr_store.json`), written atomically. No database server.
+- **Synthetic data only:** `seed_ehr.py` takes clinical values from test-set rows and invents names, dates and MRNs. Rows are chosen to show every risk tier, so the seeded mix over-represents high-risk patients.
+- **No login.** This is a single-user demonstration.
+- **Derived fields:** age bracket is computed from date of birth, and length of stay from the admission and discharge dates (1–14 days, the range the model was trained on).
+- **Guardrails:** death and hospice discharges are refused. Model-relevant fields are required, so missing data is never silently replaced with defaults.
+- **Risk tiers** are tied to the review threshold: Low < 15% (not flagged), Moderate 15–25%, High ≥ 25%.
+
+**EHR endpoints** (all under `/ehr`): `GET /options`, `GET /summary`, `GET /worklist`, `GET|POST /patients`,
+`GET|DELETE /patients/{id}`, `POST /patients/{id}/encounters`, `GET /encounters/{id}`, `PATCH /encounters/{id}/review`.
+Interactive documentation is at `/docs`.
 
 ---
 
@@ -251,11 +285,13 @@ curl -X POST "http://127.0.0.1:8000/predict" \
 ```
 
 ### Example Response:
+Optional fields left out of the request (`payer_code`, `medical_specialty`, `race`) are treated as "not recorded"; they are never filled with guessed values.
+
 ```json
 {
   "is_eligible": true,
-  "readmission_probability": 0.1577,
-  "readmission_risk_percentage": "15.8%",
+  "readmission_probability": 0.1931,
+  "readmission_risk_percentage": "19.3%",
   "requires_review": true,
   "risk_level": "Moderate Risk",
   "clinical_recommendation": "Enhanced discharge planning and scheduled phone check-in within 7 days.",

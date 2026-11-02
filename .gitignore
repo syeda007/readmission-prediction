@@ -26,3 +26,6 @@ Thumbs.db
 # Logs & temp
 *.log
 scratch/
+
+# EHR store temp file (atomic writes)
+storage/*.tmp

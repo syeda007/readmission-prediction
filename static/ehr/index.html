@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReadmitAI EHR — Discharge Worklist</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="ehr.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <a class="brand" href="index.html">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <div>
+          <div class="brand-name">ReadmitAI EHR</div>
+          <div class="brand-sub">30-day readmission risk at discharge</div>
+        </div>
+      </a>
+      <span class="synthetic-badge">Synthetic data</span>
+      <nav class="nav">
+        <a href="followups.html">Follow-ups<span class="nav-badge hidden" id="navFollowupsBadge"></span></a>
+        <a href="index.html#worklist" id="navWorklist" class="active">Worklist</a>
+        <a href="index.html#patients" id="navPatients">Patients</a>
+        <a href="../index.html">Risk calculator</a>
+        <a href="/docs" target="_blank" rel="noopener">API</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="page-title">
+      <h1>Discharge overview</h1>
+      <button class="btn btn-primary" id="btnNewPatient">+ New patient</button>
+    </div>
+
+    <section class="stats">
+      <div class="card stat">
+        <div class="stat-label">Patients</div>
+        <div class="stat-value" id="statPatients">–</div>
+        <div class="stat-note" id="statEncounters">– admissions recorded</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">Flagged for review</div>
+        <div class="stat-value" id="statFlagged">–</div>
+        <div class="stat-note" id="statThreshold">risk ≥ threshold</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">Pending review</div>
+        <div class="stat-value" id="statPending">–</div>
+        <div class="stat-note">flagged, not yet actioned</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">Risk tiers</div>
+        <div class="tier-bar" id="tierBar"></div>
+        <div class="tier-legend" id="tierLegend"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="tabs">
+        <button class="tab active" data-tab="worklist">Discharge worklist</button>
+        <button class="tab" data-tab="patients">Patient registry</button>
+      </div>
+
+      <!-- Worklist -->
+      <div id="tabWorklist">
+        <div class="toolbar">
+          <input type="search" class="grow" id="wlSearch" placeholder="Search by name or MRN">
+          <select id="wlTier">
+            <option value="">All tiers</option>
+            <option>High Risk</option>
+            <option>Moderate Risk</option>
+            <option>Low Risk</option>
+          </select>
+          <select id="wlStatus"><option value="">All statuses</option></select>
+          <label class="check"><input type="checkbox" id="wlFlagged" style="width:auto"> Flagged only</label>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Risk</th><th>Patient</th><th>Age</th><th>Discharged</th>
+                <th>Destination</th><th>Primary diagnosis</th><th>Tier</th><th>Review status</th>
+              </tr>
+            </thead>
+            <tbody id="wlBody"></tbody>
+          </table>
+        </div>
+        <div class="empty hidden" id="wlEmpty">No admissions match these filters.</div>
+      </div>
+
+      <!-- Patient registry -->
+      <div id="tabPatients" class="hidden">
+        <div class="toolbar">
+          <input type="search" class="grow" id="ptSearch" placeholder="Search by name or MRN">
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Patient</th><th>Date of birth</th><th>Gender</th><th>Admissions</th><th>Last discharge</th><th>Latest risk</th></tr>
+            </thead>
+            <tbody id="ptBody"></tbody>
+          </table>
+        </div>
+        <div class="empty hidden" id="ptEmpty">No patients yet. Add one with “New patient”.</div>
+      </div>
+    </section>
+
+    <p class="muted small" style="margin-top:14px">
+      All patients are synthetic. Risk estimates come from a model with test ROC-AUC 0.67 and are meant to
+      prioritise follow-up calls, not to replace clinical judgement.
+    </p>
+  </main>
+
+  <!-- New patient modal -->
+  <div class="modal hidden" id="patientModal">
+    <div class="card modal-box">
+      <div class="card-head">
+        <h2>Register new patient</h2>
+        <button class="btn btn-ghost" data-close>✕</button>
+      </div>
+      <form class="card-body" id="patientForm" novalidate>
+        <div class="form-error hidden" id="patientError"></div>
+        <div class="grid two">
+          <div><label for="first_name">First name</label><input id="first_name" name="first_name" required maxlength="60"></div>
+          <div><label for="last_name">Last name</label><input id="last_name" name="last_name" required maxlength="60"></div>
+          <div><label for="date_of_birth">Date of birth</label><input type="date" id="date_of_birth" name="date_of_birth" required></div>
+          <div>
+            <label for="gender">Gender</label>
+            <select id="gender" name="gender" required>
+              <option value="">Select…</option><option>Female</option><option>Male</option>
+            </select>
+          </div>
+          <div>
+            <label for="race">Race <span class="hint">(optional)</span></label>
+            <select id="race" name="race"></select>
+          </div>
+          <div>
+            <label for="payer_code">Insurance <span class="hint">(optional)</span></label>
+            <select id="payer_code" name="payer_code"></select>
+          </div>
+          <div class="full">
+            <label for="phone">Phone for follow-up calls <span class="hint">(optional)</span></label>
+            <input type="tel" id="phone" name="phone" maxlength="25" placeholder="e.g. (312) 555-0142">
+          </div>
+        </div>
+        <p class="muted small" style="margin:12px 0 16px">
+          The source dataset never defines its payer codes; labels marked “likely” or “undocumented” are best interpretations.
+        </p>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSavePatient">Save &amp; add admission</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="ehr.js"></script>
+  <script src="worklist.js"></script>
+</body>
+</html>

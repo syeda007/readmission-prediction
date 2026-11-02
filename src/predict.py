@@ -17,11 +17,15 @@ DEFAULT_MODEL_PATH = os.path.abspath(
 
 INELIGIBLE_DISCHARGE_IDS = {11, 13, 14, 19, 20, 21, "11", "13", "14", "19", "20", "21"}
 
-RISK_TIERS = [
-    (0.12, "Low Risk", "Standard routine post-discharge care protocol."),
-    (0.22, "Moderate Risk", "Enhanced discharge planning and scheduled phone check-in within 7 days."),
-    (1.01, "High Risk", "Priority multidisciplinary review, pharmacist consult, and follow-up visit within 48-72 hours."),
-]
+# Tier boundaries are anchored to the review threshold so the tier never contradicts the
+# review flag: Low = below threshold (not flagged); Moderate/High = flagged.
+HIGH_RISK_CUTOFF = 0.25
+
+RISK_RECOMMENDATIONS = {
+    "Low Risk": "Standard routine post-discharge care protocol.",
+    "Moderate Risk": "Enhanced discharge planning and scheduled phone check-in within 7 days.",
+    "High Risk": "Priority multidisciplinary review, pharmacist consult, and follow-up visit within 48-72 hours.",
+}
 
 
 class ReadmitAIPredictor:
@@ -47,10 +51,13 @@ class ReadmitAIPredictor:
         self.explainer = self.package.get("explainer", None)
 
     def _determine_risk_tier(self, probability: float) -> Tuple[str, str]:
-        for cutoff, tier_name, recommendation in RISK_TIERS:
-            if probability < cutoff:
-                return tier_name, recommendation
-        return "High Risk", "Priority multidisciplinary review and rapid follow-up."
+        if probability < self.threshold:
+            tier = "Low Risk"
+        elif probability < HIGH_RISK_CUTOFF:
+            tier = "Moderate Risk"
+        else:
+            tier = "High Risk"
+        return tier, RISK_RECOMMENDATIONS[tier]
 
     def predict_encounter(
         self,

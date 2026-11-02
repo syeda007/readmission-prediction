@@ -23,6 +23,8 @@ from api.schemas import (
     ModelInfoResponse,
 )
 from src.predict import get_predictor, INELIGIBLE_DISCHARGE_IDS
+from api.ehr import router as ehr_router
+from api.followups import router as followups_router
 
 app = FastAPI(
     title="ReadmitAI - Clinical Discharge Intelligence API",
@@ -34,10 +36,13 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(ehr_router)
+app.include_router(followups_router)
 
 # Paths
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -51,8 +56,8 @@ if os.path.exists(STATIC_PATH):
 
 @app.get("/", include_in_schema=False)
 def root_redirect():
-    """Redirects root visits to the demonstration interface."""
-    return RedirectResponse(url="/static/index.html")
+    """Redirects root visits to the care coordinator's follow-up list."""
+    return RedirectResponse(url="/static/ehr/followups.html")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["System"])
@@ -128,7 +133,7 @@ def get_feature_schema():
         "expected_columns": predictor.expected_cols,
         "numerical_features": predictor.package.get("numerical_columns", []),
         "categorical_features": predictor.package.get("categorical_columns", []),
-        "clinical_ineligible_discharge_ids": list(INELIGIBLE_DISCHARGE_IDS),
+        "clinical_ineligible_discharge_ids": sorted({int(i) for i in INELIGIBLE_DISCHARGE_IDS}),
         "operational_decision_threshold": predictor.threshold,
         "clinical_guidance": (
             "Qualitative clinical notes and symptoms reported in EHR must be stored "
@@ -149,7 +154,7 @@ def predict_readmission_risk(patient: PatientEncounterInput):
     disch_id = patient_dict.get("discharge_disposition_id")
     if disch_id in INELIGIBLE_DISCHARGE_IDS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"Patient discharge disposition ID ({disch_id}) corresponds to death or hospice care. "
                 "These patients are clinically ineligible for 30-day acute readmission risk estimation."
@@ -162,7 +167,7 @@ def predict_readmission_risk(patient: PatientEncounterInput):
 
     if not result.get("is_eligible", True):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=result.get("error", "Patient encounter is ineligible for readmission risk assessment.")
         )
 
@@ -180,7 +185,7 @@ def explain_readmission_risk(patient: PatientEncounterInput):
     disch_id = patient_dict.get("discharge_disposition_id")
     if disch_id in INELIGIBLE_DISCHARGE_IDS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"Patient discharge disposition ID ({disch_id}) corresponds to death or hospice care. "
                 "These patients are clinically ineligible for 30-day acute readmission risk estimation."
@@ -192,7 +197,7 @@ def explain_readmission_risk(patient: PatientEncounterInput):
 
     if not result.get("is_eligible", True):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=result.get("error", "Patient encounter is ineligible.")
         )
 

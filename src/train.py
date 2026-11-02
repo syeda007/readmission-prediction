@@ -32,6 +32,21 @@ from src.calibration import fit_patient_disjoint_calibration
 from src.explainability import ReadmitAIExplainer
 from src.subgroup_analysis import evaluate_subgroups, plot_subgroup_metrics
 
+# Operational policy: care coordinators can review at most about 1 in 6 discharges.
+REVIEW_CAPACITY = 1 / 6
+THRESHOLD_GRID = [0.08, 0.10, 0.12, 0.14, 0.15, 0.18, 0.20, 0.25, 0.30, 0.40, 0.50]
+
+
+def select_threshold(threshold_evals, max_flag_rate: float = REVIEW_CAPACITY) -> float:
+    """
+    Picks the lowest threshold (i.e. highest recall) whose validation flag rate fits within
+    the review capacity. Chosen on the validation set only; the test set is never consulted.
+    """
+    feasible = [t for t in threshold_evals if t["cases_flagged_pct"] / 100 <= max_flag_rate]
+    if not feasible:
+        raise ValueError("No threshold in the grid keeps the review workload within capacity.")
+    return min(t["threshold"] for t in feasible)
+
 
 def run_training_pipeline(
     data_dir: str = None,
@@ -231,10 +246,9 @@ def run_training_pipeline(
     print("\n" + "=" * 70)
     print("STAGE 6: PREDICTION THRESHOLD OPTIMIZATION (VALIDATION COHORT)")
     print("=" * 70)
-    thresholds_to_test = [0.08, 0.10, 0.12, 0.14, 0.15, 0.18, 0.20, 0.25, 0.30, 0.40, 0.50]
     threshold_evals = []
 
-    for t in thresholds_to_test:
+    for t in THRESHOLD_GRID:
         t_metrics = calculate_metrics(y_val.values, val_cal_probs, threshold=t)
         threshold_evals.append(t_metrics)
         print(
@@ -248,11 +262,11 @@ def run_training_pipeline(
     threshold_json_path = os.path.join(metrics_dir, "threshold_analysis.json")
     threshold_df.to_json(threshold_json_path, orient="records", indent=2)
 
-    # Clinical threshold selection policy:
-    # At prevalence ~11.5%, a standard 0.50 cutoff produces excessive False Negatives (missing >90% of readmissions).
-    # We select a balanced clinical threshold (0.15), providing high sensitivity while keeping review workload manageable (~25-30%).
-    selected_threshold = 0.15
-    print(f"\n--> Selected Operational Decision Threshold: {selected_threshold:.2f}")
+    # At ~11.5% prevalence a 0.50 cutoff misses >90% of readmissions, so the threshold is set by
+    # review capacity instead: the highest-recall threshold that flags at most REVIEW_CAPACITY of discharges.
+    selected_threshold = select_threshold(threshold_evals)
+    print(f"\n--> Selected Operational Decision Threshold: {selected_threshold:.2f} "
+          f"(highest recall flagging at most {REVIEW_CAPACITY:.1%} of validation discharges)")
 
     # Plot probability distribution and confusion matrix on validation
     plot_probability_distribution(
